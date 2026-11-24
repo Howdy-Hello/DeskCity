@@ -44,8 +44,8 @@ const FONT = {
 };
 export const textWidth = (s, scale = 1) => (s.length * 4 - 1) * scale;
 
-export function painter(cv) {
-  const ctx = cv.getContext('2d');
+export function painter(cv) { // a canvas, or a 2D context to draw on directly
+  const ctx = cv.getContext ? cv.getContext('2d') : cv;
   const p = {
     ctx,
     rect(x, y, w, h, c) {

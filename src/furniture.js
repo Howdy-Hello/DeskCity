@@ -5,6 +5,18 @@
 //        hip = rows above the floor when sitting or lying.
 import { rng, pick, shade } from './draw.js';
 
+// Home furniture that arrives flat-packed: box size and assembly time in minutes (from IKEA
+// assembly-service data: beds 1-2.5 h, wardrobes 1-5 h, bookcases under 1 h, small pieces ~40 min).
+// Everything else (kitchen appliances, toilets, sinks, showers, office and shop fittings) is built in.
+export const FLATPACK = {
+  bed: ['l', 100], bed2: ['l', 130], wardrobe: ['l', 150], dresser: ['m', 60], nightstand: ['s', 25], bookshelf: ['m', 50],
+  sofa: ['l', 15], armchair: ['m', 10], tv: ['m', 20], table: ['m', 40], lamp: ['s', 15], plant: ['s', 5],
+  pcdesk: ['m', 60], laptopdesk: ['s', 30], planter: ['m', 30], seedlings: ['m', 25], treadmill: ['l', 45], weightbench: ['m', 35], bistro: ['s', 15],
+};
+export const BOX = { s: [5, 4], m: [7, 6], l: [10, 7] };
+// Which flat-pack to open first.
+export const UNPACK_ORDER = ['bed2', 'bed', 'table', 'sofa', 'tv', 'armchair', 'nightstand', 'pcdesk', 'laptopdesk', 'wardrobe', 'dresser', 'bookshelf', 'lamp', 'bistro', 'planter', 'seedlings', 'treadmill', 'weightbench', 'plant'];
+
 const C = {
   wood: '#a0693a', woodDark: '#6e4423', woodLight: '#c99a62',
   white: '#f3f1ec', offwhite: '#dcd6cb', metal: '#a7adb3', metalDark: '#6f767d',
@@ -251,6 +263,95 @@ export const FURNITURE = {
     draw(p, x, y) { p.rect(x, y - 4, 14, 4, '#7f8c8d'); p.rect(x, y - 9, 3, 9, '#5f6b6c'); p.rect(x + 11, y - 6, 3, 6, '#5f6b6c'); },
   },
 
+  // ---------- home office ----------
+  pcdesk: {
+    w: 20, h: 14, spots: [{ act: 'game', dx: 2, hip: 5, dir: 1 }, { act: 'homework', dx: 2, hip: 5, dir: 1 }], screen: { dx: 9, dy: -12, w: 7, h: 4 },
+    draw(p, x, y, it) {
+      p.rect(x, y - 11, 2, 8, it.color); p.rect(x, y - 11, 2, 1, C.black); p.rect(x, y - 4, 5, 1, C.black); p.rect(x + 2, y - 3, 1, 3, C.black); p.rect(x, y, 5, 1, C.black); // gaming chair
+      p.rect(x + 6, y - 7, 14, 1, '#3a3a3a'); p.rect(x + 7, y - 6, 1, 7, '#3a3a3a');
+      p.rect(x + 17, y - 6, 3, 7, '#1f1f24'); p.px(x + 18, y - 5, '#ff4fd8'); p.px(x + 18, y - 3, '#4fd8ff'); // PC tower with RGB
+      p.rect(x + 8, y - 13, 9, 6, C.black); p.rect(x + 9, y - 12, 7, 4, C.screen);
+      p.rect(x + 9, y - 8, 4, 1, '#555'); p.px(x + 14, y - 8, '#ff4fd8');
+    },
+  },
+  laptopdesk: {
+    w: 16, h: 12, spots: [{ act: 'game', dx: 2, hip: 5, dir: 1 }, { act: 'homework', dx: 2, hip: 5, dir: 1 }], screen: { dx: 10, dy: -11, w: 3, h: 2 },
+    draw(p, x, y, it) {
+      chair(p, x, y, false);
+      p.rect(x + 5, y - 7, 11, 1, C.wood); p.rect(x + 6, y - 6, 1, 7, C.woodDark); p.rect(x + 14, y - 6, 1, 7, C.woodDark);
+      p.rect(x + 8, y - 8, 6, 1, '#9a9a9a'); p.rect(x + 9, y - 12, 5, 4, '#555'); p.rect(x + 10, y - 11, 3, 2, C.screen);
+      p.rect(x + 14, y - 9, 1, 1, it.color); // a mug
+    },
+  },
+
+  // ---------- greenhouse ----------
+  planter: {
+    w: 14, h: 9, spots: [{ act: 'garden', dx: 7, dir: 1 }],
+    draw(p, x, y, it, r) {
+      p.rect(x, y - 4, 14, 5, C.wood); p.rect(x, y - 4, 14, 1, '#5b3a1e'); p.rect(x, y - 2, 14, 1, C.woodDark);
+      for (let i = 1; i < 13; i += 2) {
+        const h = 1 + (r() * 3 | 0);
+        p.rect(x + i, y - 4 - h, 1, h, C.plantDark); p.px(x + i, y - 5 - h, pick(r, [C.plant, '#e74c3c', '#f39c12', C.plant]));
+      }
+    },
+  },
+  seedlings: {
+    w: 10, h: 14, spots: [{ act: 'garden', dx: 5, dir: 1 }],
+    draw(p, x, y, it, r) {
+      p.rect(x, y - 13, 1, 14, C.metalDark); p.rect(x + 9, y - 13, 1, 14, C.metalDark);
+      for (let s = y - 13; s <= y; s += 5) { p.rect(x, s, 10, 1, C.metal); if (s < y) for (let i = 1; i < 9; i += 2) { p.px(x + i, s + 3, C.pot); p.px(x + i, s + 2, r() > 0.3 ? C.plant : C.plantDark); } }
+    },
+  },
+
+  // ---------- home gym ----------
+  treadmill: {
+    w: 18, h: 12, spots: [{ act: 'exercise', dx: 7, dir: 1, anim: 'run' }],
+    draw(p, x, y) {
+      p.rect(x, y - 2, 16, 3, '#333'); p.rect(x + 1, y - 2, 14, 1, '#555');
+      p.rect(x + 15, y - 11, 2, 10, C.metalDark); p.rect(x + 12, y - 12, 6, 2, C.black); p.px(x + 14, y - 12, '#2ecc71');
+      p.rect(x + 10, y - 9, 6, 1, C.metal);
+    },
+  },
+  weightbench: {
+    w: 14, h: 11, spots: [{ act: 'exercise', dx: 6, hip: 6, lie: true, dir: 1, anim: 'bench' }],
+    draw(p, x, y) {
+      p.rect(x + 1, y - 5, 11, 2, '#a93226'); p.rect(x + 2, y - 3, 1, 4, C.metalDark); p.rect(x + 10, y - 3, 1, 4, C.metalDark);
+      p.rect(x + 1, y - 10, 1, 5, C.metalDark); p.rect(x + 12, y - 10, 1, 5, C.metalDark);
+      p.rect(x - 1, y - 11, 16, 1, C.metal); p.rect(x - 1, y - 12, 2, 3, C.black); p.rect(x + 13, y - 12, 2, 3, C.black); // barbell
+    },
+  },
+
+  // ---------- balcony ----------
+  bistro: {
+    w: 13, h: 10, spots: [{ act: 'balcony', dx: 2, hip: 5, dir: 1 }, { act: 'balcony', dx: 11, hip: 5, dir: -1 }],
+    draw(p, x, y, it) {
+      chair(p, x, y, false, C.metalDark); chair(p, x + 9, y, true, C.metalDark);
+      p.rect(x + 5, y - 6, 4, 1, C.metal); p.rect(x + 6, y - 5, 1, 6, C.metalDark); p.px(x + 7, y - 7, it.color);
+    },
+  },
+
+  // ---------- lobby: the delivery area ----------
+  parcelshelf: {
+    w: 16, h: 14, spots: [],
+    draw(p, x, y) {
+      p.rect(x - 1, y, 18, 1, '#f1c40f'); for (let k = x; k < x + 16; k += 4) p.rect(k, y, 2, 1, '#2a2a2e'); // floor marking
+      p.rect(x, y - 11, 1, 11, C.metalDark); p.rect(x + 15, y - 11, 1, 11, C.metalDark);
+      p.rect(x, y - 11, 16, 1, C.metal); p.rect(x, y - 6, 16, 1, C.metal);
+      p.rect(x + 5, y - 14, 6, 3, '#c8a06a'); p.rect(x + 7, y - 14, 1, 3, '#9b7a4a'); // a parcel on top as a sign
+    },
+  },
+
+  // ---------- office HR ----------
+  hrdesk: {
+    w: 24, h: 13, spots: [{ act: 'work', dx: 2, hip: 5, dir: 1 }, { act: 'meet', dx: 21, hip: 5, dir: -1 }], screen: { dx: 9, dy: -12, w: 6, h: 4 },
+    draw(p, x, y, it) {
+      officeChair(p, x, y, false);
+      p.rect(x + 6, y - 7, 12, 1, C.woodLight); p.rect(x + 7, y - 6, 10, 7, C.wood); p.rect(x + 9, y - 4, 6, 1, C.woodDark);
+      p.rect(x + 8, y - 13, 8, 6, C.black); p.rect(x + 9, y - 12, 6, 4, C.screen); p.rect(x + 16, y - 9, 2, 2, it.color);
+      chair(p, x + 20, y, true, C.metalDark);
+    },
+  },
+
   // ---------- shop ----------
   shelves: {
     w: 14, h: 16, spots: [{ act: 'browse', dx: 7, dir: 1 }],
@@ -334,6 +435,18 @@ export const DETAILS = {
     w: 12, h: 8,
     draw(p, x, y) { p.rect(x, y, 12, 8, C.metalDark); for (let i = 0; i < 4; i++) for (let k = 0; k < 2; k++) p.rect(x + 1 + i * 3, y + 1 + k * 4, 2, 3, C.metal); },
   },
+  brand: { // a company's name plaque
+    w: 20, h: 7,
+    draw(p, x, y, d) { const w = d.text.length * 4 + 3; p.rect(x, y, w, 7, d.color); p.rect(x, y + 6, w, 1, shade(d.color, 0.7)); p.text(d.text, x + 2, y + 1, C.white); },
+  },
+  directory: { // which company is on which floor
+    w: 26, h: 20,
+    draw(p, x, y, d) { // two columns, so it stays above the reception desk
+      const col = Math.max(...d.lines.map((l) => l.length)) * 4 + 3, rows = Math.ceil(d.lines.length / 2);
+      p.rect(x, y, col * 2 + 2, rows * 6 + 2, '#2c3e50');
+      d.lines.forEach((l, i) => p.text(l, x + 2 + Math.floor(i / rows) * col, y + 2 + (i % rows) * 6, '#f1c40f'));
+    },
+  },
   sale: { w: 15, h: 7, draw(p, x, y) { p.rect(x, y, 15, 7, '#e74c3c'); p.text('SALE', x, y + 1, C.white); } },
   open: { w: 15, h: 7, draw(p, x, y) { p.rect(x, y, 15, 7, '#27ae60'); p.text('OPEN', x, y + 1, C.white); } },
 };
@@ -351,12 +464,18 @@ export const ROOMS = {
   washroom: { wall: '#d6edf2', floor: TILE, tiles: true, items: (v, w) => (v === 'office'
     ? [['toilet', 1], ['sink', 1], ['toilet', 3], ['sink', 4]]
     : [['toilet', 1], ['sink', 1], [w >= 40 ? 'bathtub' : 'shower', 2]]), decor: ['towel'] },
-  lobby: { wall: '#efe5d5', floor: TILE, items: () => [['plant', 3], ['bench', 1], ['plant', 4]], decor: ['mailboxes', 'picture'] },
+  lobby: { wall: '#efe5d5', floor: TILE, items: () => [['parcelshelf', 1], ['plant', 4], ['bench', 2], ['plant', 3]], decor: ['mailboxes', 'picture'] },
+  study: { wall: '#e8e4d8', floor: WOOD, items: (v, w, r) => [['plant', 4], [r() < 0.6 ? 'pcdesk' : 'laptopdesk', 1], ['bookshelf', 2], ['lamp', 5]], decor: ['poster', 'shelf'] },
+  greenhouse: { wall: '#dcefd6', floor: TILE, tiles: true, items: () => [['planter', 1], ['seedlings', 2], ['planter', 3], ['plant', 4], ['plant', 5]], decor: ['shelf'] },
+  gym: { wall: '#e3e6ea', floor: CARPET, items: () => [['treadmill', 1], ['weightbench', 2], ['plant', 4]], decor: ['mirror', 'poster'] },
+  balcony: { wall: null, floor: '#9a9a9a', outdoor: true, noWindow: true, items: () => [['plant', 3], ['bistro', 1], ['plant', 2]], decor: [] },
+  hr: { wall: '#e6e2ea', floor: CARPET, items: () => [['filing', 3], ['hrdesk', 1], ['plant', 4], ['filing', 5]], decor: ['certificate', 'poster'] },
+  lounge: { wall: '#e9e1d4', floor: CARPET, items: () => [['plant', 4], ['couch', 1], ['armchair', 3], ['tv', 2]], decor: ['picture', 'clock'] },
   desks: { wall: '#e5e9ef', floor: CARPET, items: () => [['filing', 9], ...rep(8, 'desk', 1), ['printer', 10], ['plant', 11]], decor: ['whiteboard', 'clock'] },
   boss: { wall: '#eadcc6', floor: WOOD, items: () => [['bookshelf', 2], ['bossdesk', 1], ['plant', 3]], decor: ['certificate', 'picture'] },
   common: { wall: '#f3e5d2', floor: TILE, items: () => [['fridge', 3], ['coffee', 1], ['officetable', 2], ['watercooler', 4], ['vending', 5]], decor: ['poster', 'clock'] },
   meeting: { wall: '#e3e7f0', floor: CARPET, items: () => [['plant', 3], ['conference', 1], ['plant', 4]], decor: ['whiteboard', 'screen'] },
-  reception: { wall: '#ece3d3', floor: TILE, items: () => [['plant', 3], ['reception', 1], ['couch', 2]], decor: ['logo', 'clock'] },
+  reception: { wall: '#ece3d3', floor: TILE, items: () => [['reception', 1], ['couch', 2], ['plant', 3]], decor: ['logo', 'clock'] },
   store: {
     wall: '#f5f2ea', floor: TILE, noWindow: true,
     items: () => [['baskets', 12], ['checkout', 1], ['shelves', 2], ['produce', 5], ['shelves', 4], ['shelves', 6], ['shelves', 8], ['shelves', 10], ['fridgecase', 3], ['fridgecase', 9]],
@@ -367,7 +486,7 @@ FURNITURE.bed2 = { ...FURNITURE.bed, spots: [...FURNITURE.bed.spots, { act: 'sle
 
 // Picks and places furniture for one room. Returns pieces with absolute x (within the building).
 export function furnish(room, r) {
-  const cands = ROOMS[room.kind].items(room.variant, room.w).map(([kind, prio], order) => ({ kind, prio, order }));
+  const cands = ROOMS[room.kind].items(room.variant, room.w, r).map(([kind, prio], order) => ({ kind, prio, order }));
   const chosen = [];
   let used = 4; // 2-cell margin on each side
   for (const c of [...cands].sort((a, b) => a.prio - b.prio)) {
@@ -397,6 +516,7 @@ export function decorate(room, items, r) {
     if (room.w >= w + 8) { add(kind, mid - w / 2, -20); winL = mid - w / 2 - 2; winR = mid + w / 2 + 2; }
   }
   [[left, winL], [winR, right]].forEach(([a, b], i) => {
+    if (!rule.decor.length) return;
     const kind = rule.decor[i % rule.decor.length], w = DETAILS[kind].w;
     if (b - a >= w + 2) add(kind, (a + b) / 2 - w / 2, -19);
   });

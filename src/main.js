@@ -2,6 +2,8 @@
 import { City } from './city.js';
 import { updatePerson, drawPerson } from './people.js';
 import { desktop } from './desktop.js';
+import { drawBox } from './buildings.js';
+import { BOX } from './furniture.js';
 import { clock, tickSettings, setTownActions } from './settings.js';
 
 // Browser testing options (they never touch your saved town):
@@ -68,7 +70,7 @@ function step(ms, draw = true) {
 
   const now = simNow(), d = new Date(now);
   const w = {
-    city, now, t: ms / 1000, W, G: H - 1, windows: desktop.windows,
+    city, now, t: ms / 1000, dt, W, G: H - 1, windows: desktop.windows,
     hour: d.getHours() + d.getMinutes() / 60,
     day: Math.floor((now - d.getTimezoneOffset() * 60e3) / 864e5),
   };
@@ -88,6 +90,16 @@ function step(ms, draw = true) {
     b.reveal += ((here.length ? 1 : 0) - b.reveal) * 0.1; // the outside fades away while someone is in
     b.draw(ctx, here, (p) => drawPerson(ctx, p, w.t), w);
   }
+  for (const b of city.lots) { // flat-packs waiting outside front doors
+    if (!b) continue;
+    const stacked = new Map();
+    for (const x of b.boxes) {
+      if (!x.outside || x.carried) continue;
+      const k = stacked.get(x.lx) || 0; stacked.set(x.lx, k + 1);
+      drawBox(ctx, b.x0 + x.lx, H - 1 - k * BOX[x.size][1], x.size);
+    }
+  }
+  for (const t of city.trucks) t.draw(ctx, w.t);
   for (const p of city.people) if (!p.b) drawPerson(ctx, p, w.t);
 
   if (desktop.fake) { // stand-ins for real windows, which would cover the town

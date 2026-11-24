@@ -41,6 +41,29 @@ The town grows with its population (see `GROWTH` in `src/city.js`):
 | Office | Small Office (1) → Office (3, stairs) → Office Tower (12, elevator) | 3 → 8 → 42 desks |
 | Shop | Corner Store → Supermarket | — |
 
+### Buildings 1.1
+
+**Homes have different rooms.** Every household gets a kitchen, a bedroom and a washroom, then extras if they fit: a living room (85%), a home office with a gaming/work PC or a laptop (35%), a second bedroom (30%), a home gym with treadmill and weight bench (7%), or a greenhouse with planters and seedlings (6%). Houses put the kitchen and living space downstairs and bedrooms upstairs. About 40% of apartment and condo floors get a balcony (roughly the share of renters who call one a must-have), with a bistro set and plants, open to the sky, behind a glass door.
+
+**Furniture is delivered and assembled.**
+- New homes come with the built-ins: kitchen appliances, toilet, sink, shower or bath. Everything else is flat-pack.
+- A household moving in orders its furniture. A truck arrives 1–3 hours later during delivery hours (8am–8pm), otherwise the next morning. The driver carries each box to the front door (cottages, houses) or the lobby's parcel shelf (apartments, condos).
+- Residents fetch the boxes (after dinner, or during the day if they have no job), carry them home, kneel and hammer them together. The bed comes first. Assembly times follow IKEA assembly-service data: a double bed about 2 hours, a wardrobe 2.5 hours, a bookcase under 1 hour, small pieces 15–40 minutes. Half-built furniture shows as a ghost filling in from the floor up.
+- If the bed isn't ready by bedtime they sleep on the floor. With no table or sofa yet they eat sitting on the floor and scroll their phone.
+- After an upgrade, people move into the new building and order new furniture.
+
+**Offices are shared.**
+- An office tower has a lobby with a directory board, one common floor somewhere in the middle (a cafeteria and a lounge with a TV), and shared washrooms on every third floor.
+- The rest is split between 2–4 companies. Each has its own name plaque on its floors, and its own boss office, HR office and meeting room on its top floor, plus more meeting rooms on desk floors (about one per 10–20 people).
+- The city's first tower is the headquarters: one company owns all of it and puts its name on the roof.
+- Workers go to meetings, walk (or take the lift) to a washroom on another floor, and take afternoon breaks at the coffee machine or on the lounge couch.
+
+**Routines.** People with a home office work from home about one day in four (US average: 1–1.5 days a week). Evenings may go to gaming, the balcony, the greenhouse or the gym, depending on what the home has.
+
+**Doors.** Every doorway has a door: face-on when closed, swinging open as someone comes near and closing behind them. The door into the stairwell or lift is the household's front door. Offices have frosted-glass doors.
+
+Sources: [TaskRabbit IKEA assembly data](https://www.taskrabbit.com/blog/ikea-furniture-assembly-cost/), [MyBuilder assembly times](https://www.mybuilder.com/handyman/price-guides/ikea-assembly-cost), [Minneapolis Fed on remote work](https://www.minneapolisfed.org/article/2026/is-remote-work-declining-what-the-latest-data-show), [S&P Global on work from home](https://www.spglobal.com/market-intelligence/en/news-insights/articles/2025/5/covid-s-impact-post-pandemic-work-from-home-solidifies-88884214), [WeWork on meeting rooms](https://www.wework.com/ideas/workspace-solutions/how-many-meeting-rooms-do-you-really-need), [Apartments.com renter survey](https://www.apartments.com/blog/apartment-features-renters-want-most).
+
 ### Getting between floors
 
 - **Up to 5 floors: stairs.** A switchback stairwell on the right of the building: between two floors, a gentle flight of 5 steps up to a half landing, then a second flight back the other way. People climb, turn on the landing, and carry on. A guard rail runs round the opening on the top floor.

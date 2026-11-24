@@ -66,6 +66,15 @@ export const ANIM = {
     sL: 2.6 + 0.5 * sin(t * 17), eL: 0.6, sR: 2.2 + 0.5 * sin(t * 17 + 1), eR: 0.6,
   }),
   land: () => ({ lean: 0.35, tL: 1.3, kL: 2.2, tR: 1.1, kR: 2.0, sL: 0.9, eL: 0.2, sR: 0.7, eR: 0.2 }),
+  // moving in: lifting a box, kneeling to put furniture together
+  lift: () => ({ lean: 0.9, tL: 0.6, kL: 1.1, tR: 0.4, kR: 1.0, sL: 0.3, eL: 0.2, sR: 0.2, eR: 0.2, hy: 0.6 }),
+  assemble: (t) => ({ lean: 0.45, tL: 1.6, kL: 2.7, tR: 0.5, kR: 1.6, sL: 0.9, eL: 0.4, sR: 1.1 + 0.6 * Math.max(0, sin(t * 9)), eR: 1.2, hy: 0.4 }), // hammering
+  floorEat: (t) => { const k = (sin(t * 2.2) + 1) / 2; return { lean: 0.1, tL: 1.5, kL: 2.8, tR: 1.4, kR: 2.7, sL: 0.9, eL: 0.6, sR: 0.8 + 1.3 * k, eR: 0.6 + 1.9 * k }; },
+  phone: (t) => ({ lean: 0.15, tL: 1.5, kL: 2.8, tR: 1.4, kR: 2.7, sL: 1.2, eL: 1.6, sR: 1.1, eR: 1.7 + 0.05 * sin(t * 6), hy: 0.6 }),
+  // hobbies
+  run: (t) => ({ ...ANIM.walk(t, t * 15), lean: 0.2 }),
+  bench: (t) => { const k = (sin(t * 2) + 1) / 2; return { rot: -PI / 2, tL: 1.2, kL: 1.5, tR: 1.1, kR: 1.4, sL: PI / 2, eL: 1.4 * k, sR: PI / 2, eR: 1.4 * k }; },
+  water: (t) => ({ lean: 0.5, tL: 0.6, kL: 1.0, tR: 0.3, kR: 0.8, sR: 1.2 + 0.15 * sin(t * 3), eR: 0.3, sL: 0.6, eL: 0.6, hy: 0.4 }),
   sleep: (t) => ({ rot: -PI / 2, tL: 0.25, kL: 0.5, tR: 0.15, kR: 0.4, sL: 0.25, eL: 0.4, sR: 0.1, eR: 0.3, lean: 0.03 * sin(t * 1.1) }),
 };
 

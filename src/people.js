@@ -1,5 +1,7 @@
 // People: daily routines, getting around (doors, stairs, elevators), and climbing on your windows.
 import { ANIM, newPose, blend, drawStickman } from './stickman.js';
+import { FLATPACK, UNPACK_ORDER } from './furniture.js';
+import { drawBox } from './buildings.js';
 
 const WALK = 14, STAIRS = 10, CLIMB = 9, GRAVITY = 300; // cells per second (and per second²)
 const MIN = 60e3; // one minute of town time, in ms
@@ -9,6 +11,7 @@ const ACT_ANIM = {
   sleep: 'sleep', eat: 'eat', lunch: 'eat', cook: 'cook', fridge: 'fridge', dishes: 'dishes', tv: 'tv',
   toilet: 'toilet', wash: 'wash', shower: 'shower', bath: 'bath', work: 'type', coffee: 'coffee', meet: 'talkSit',
   browse: 'browse', pay: 'pay', rest: 'sit', dress: 'look', print: 'wait', front: 'stand',
+  game: 'type', homework: 'type', garden: 'water', exercise: 'run', balcony: 'sit',
 };
 // If a home or office has no spot for an activity, try these instead.
 const FALLBACK = { eat: ['eat', 'tv', 'rest'], lunch: ['lunch', 'eat', 'coffee'], shower: ['shower', 'bath', 'wash'], tv: ['tv', 'rest', 'eat'], dishes: ['dishes', 'wash'] };
@@ -18,31 +21,51 @@ export function makePerson(d) {
     id: d.id, seed: d.seed, jitter: d.jitter, home: d.home, job: d.job ?? null,
     x: 0, y: 0, b: null, f: 0, surface: 'ground', dir: 1, vx: 0, vy: 0, win: null, winX: 0, side: 0,
     pose: newPose(), phase: d.seed % 7, anim: 'stand', hip: null, spot: null,
-    plan: [], wantKey: null, fidget: 'look', fidgetEnd: 0, shoppedDay: -1, landEnd: 0,
+    plan: [], wantKey: null, fidget: 'look', fidgetEnd: 0, shoppedDay: -1, landEnd: 0, carry: null,
   };
 }
 
 // ---------- what someone wants to be doing right now ----------
 // acts: 'act' lasts until the next part of the day; [act, minutes] lasts that long.
+// Boxes or half-built furniture waiting for this person's household?
+function unpacking(p, home) {
+  if (!home) return false;
+  const L = home.L, mine = (i) => L.rooms[L.items[i].room].unit === p.home.unit;
+  return !!p.carry || home.boxes.some((x) => mine(x.item) && !x.carried);
+}
+
 function want(p, w) {
   const h = (w.hour - p.jitter + 24) % 24, roll = (p.seed + w.day * 7) % 10;
-  const work = p.job && w.city.lots[p.job.lot];
+  const work = p.job && w.city.lots[p.job.lot], home = w.city.lots[p.home.lot], unit = p.home.unit;
+  const has = (act) => home?.spots(act, unit).length > 0;
+  // Working from home: ~1 day in 4 for people with a home office (US average is 1-1.5 days a week).
+  const wfh = work?.ready() && has('homework') && (p.seed + w.day * 3) % 4 === 0;
+  const boxes = unpacking(p, home);
   if (h < 6.75 || h >= 23) return { key: 'sleep', at: 'home', acts: ['sleep'] };
   if (h < 7.25) return { key: 'wake', at: 'home', acts: [['toilet', 4], ['shower', 8], 'wash'] };
   if (h < 8) return { key: 'breakfast', at: 'home', acts: [['fridge', 1], 'eat'] };
   if (h < 17) {
-    if (work?.ready()) {
+    if (work?.ready() && !wfh) {
       if (h >= 12 && h < 13) return { key: 'lunch', at: 'work', acts: [['coffee', 3], 'lunch'] };
-      if (h >= 15 && h < 15.3 && roll < 5) return { key: 'break', at: 'work', acts: ['coffee'] };
+      if ((h >= 10 && h < 10.75 && roll < 3) || (h >= 14 && h < 14.75 && roll >= 7)) return { key: 'meeting', at: 'work', acts: ['meet'] };
+      if (h >= 11 && h < 11.25 && roll % 3 === 0) return { key: 'loo', at: 'work', acts: [['toilet', 5], ['wash', 2], 'work'] };
+      if (h >= 15 && h < 15.4 && roll < 5) return { key: 'break', at: 'work', acts: [['coffee', 5], 'rest'] };
       return { key: 'work', at: 'work', acts: ['work'] };
     }
+    if (wfh) return h >= 12 && h < 13 ? { key: 'lunch-home', at: 'home', acts: [['fridge', 1], 'eat'] } : { key: 'wfh', at: 'home', acts: ['homework'] };
+    if (boxes && h >= 9) return { key: 'unpack', at: 'unpack' };
     return roll < 4 ? { key: 'explore', at: 'out' } : { key: 'relax', at: 'home', acts: ['tv'] };
   }
   if (h < 18 && roll < 3 && p.shoppedDay !== w.day && w.city.shops().length) return { key: 'shop', at: 'shop' };
   if (h < 18.5) return { key: 'cook', at: 'home', acts: [['fridge', 1], 'cook'] };
   if (h < 19.25) return { key: 'dinner', at: 'home', acts: ['eat'] };
+  if (boxes && h < 22.5) return { key: 'unpack', at: 'unpack' }; // new furniture to put together
   if (h < 21 && roll >= 6) return { key: 'explore', at: 'out' };
-  if (h < 22.5) return { key: 'evening', at: 'home', acts: ['tv'] };
+  if (h < 22.5) { // evening hobbies, depending on what the home has
+    const hobby = ['game', 'balcony', 'garden', 'exercise'][(p.seed + w.day) % 6];
+    if (hobby && has(hobby) && !(hobby === 'exercise' && h > 21)) return { key: `evening-${hobby}`, at: 'home', acts: [hobby] };
+    return { key: 'evening', at: 'home', acts: ['tv'] };
+  }
   return { key: 'bedtime', at: 'home', acts: [['dishes', 5], 'wash'] };
 }
 
@@ -78,6 +101,17 @@ function pickSpot(p, b, act, unit) {
   return null;
 }
 
+// Your own bed; on the floor beside it if it hasn't been put together yet.
+function sleepSpot(b, unit, bed) {
+  const s = b.allSpots('sleep', unit)[bed];
+  return s && (s.item.ready ? s : { ...s, hip: 1, floor: true });
+}
+// No table, sofa or desk yet: sit on the floor of the living room (or kitchen, or bedroom).
+function floorSpot(b, unit, act) {
+  const room = ['living', 'kitchen', 'bedroom'].map((k) => b.L.rooms.find((r) => r.unit === unit && r.kind === k)).find(Boolean);
+  return room && { act, x: room.x + Math.floor(room.w / 2), f: room.f, hip: 2, dir: 1, room: room.id, unit, item: null, floor: true, anim: act === 'eat' ? 'floorEat' : 'phone' };
+}
+
 function activityPlan(p, wn, w) {
   const b = w.city.lots[wn.at === 'home' ? p.home.lot : p.job.lot];
   if (!b?.ready()) return wander(p, w);
@@ -86,12 +120,32 @@ function activityPlan(p, wn, w) {
   let from = here(p);
   for (const a of wn.acts) {
     const [act, mins] = Array.isArray(a) ? a : [a, 0];
-    const s = act === 'sleep' ? b.spots('sleep', unit)[p.home.bed] : act === 'work' ? b.spots('work')[p.job.desk] : pickSpot(p, b, act, unit);
+    let s = act === 'sleep' ? sleepSpot(b, unit, p.home.bed) : act === 'work' ? b.allSpots('work')[p.job.desk] : pickSpot(p, b, act, unit);
+    if (!s && wn.at === 'home' && ['eat', 'tv', 'homework', 'game'].includes(act)) s = floorSpot(b, unit, act);
     if (!s) continue;
     steps.push(...route(from, b, s.f, b.x0 + s.x), { t: 'do', spot: s, act, mins });
     from = { b, f: s.f };
   }
   return steps.length ? steps : wander(p, w);
+}
+
+// Fetch the next box (beds first), carry it to its room, and put it together.
+function unpackPlan(p, w) {
+  const b = w.city.lots[p.home.lot], L = b.L, mine = (i) => L.rooms[L.items[i].room].unit === p.home.unit;
+  const order = (x) => UNPACK_ORDER.indexOf(L.items[x.item].kind);
+  const box = p.carry || b.boxes
+    .filter((x) => mine(x.item) && !x.carried && (x.claimed == null || x.claimed === p.id))
+    .sort((a, c) => (c.opened ? 1 : 0) - (a.opened ? 1 : 0) || order(a) - order(c))[0];
+  if (!box) return [{ t: 'do', anim: 'stand', mins: 3 }]; // someone else is on it
+  box.claimed = p.id;
+  const it = L.items[box.item], steps = [];
+  let from = here(p);
+  if (!p.carry && !box.opened) {
+    steps.push(...route(from, box.outside ? null : b, box.f, b.x0 + box.lx + 2), { t: 'pickup', box, mins: 1 });
+    from = { b: box.outside ? null : b, f: box.f };
+  }
+  steps.push(...route(from, b, it.f, b.x0 + it.x + Math.round(it.w / 2)), { t: 'assemble', box });
+  return steps;
 }
 
 function shopping(p, w) {
@@ -248,6 +302,30 @@ function run(p, dt, w) {
     case 'exit': p.b = null; p.f = 0; p.surface = 'ground'; p.y = w.G; return done(p);
     case 'enter': p.b = s.b; p.f = 0; p.surface = 'floor'; p.y = s.b.feetY(0); return done(p);
     case 'shopped': p.shoppedDay = w.day; return done(p);
+    case 'pickup': {
+      if (!s.started) { s.started = true; s.until = w.now + s.mins * MIN; }
+      p.anim = 'lift';
+      if (w.now >= s.until) { s.box.carried = true; p.carry = s.box; done(p); }
+      return;
+    }
+    case 'assemble': { // flat-pack to furniture: progress follows the town clock
+      const home = w.city.lots[p.home.lot], it = home.L.items[s.box.item];
+      if (!s.started) {
+        s.started = true; s.base = it.progress; s.t0 = w.now;
+        Object.assign(s.box, { carried: false, opened: true, outside: false, f: it.f, lx: it.x + it.w + 1 });
+        p.carry = null;
+      }
+      p.anim = 'assemble';
+      p.dir = Math.sign(home.x0 + it.x + it.w / 2 - p.x) || p.dir;
+      it.progress = Math.min(1, s.base + (w.now - s.t0) / (FLATPACK[it.kind][1] * MIN));
+      if (it.progress >= 1) {
+        it.ready = true; it.progress = 0;
+        home.boxes = home.boxes.filter((x) => x !== s.box);
+        home.rebake();
+        done(p);
+      }
+      return;
+    }
     case 'climb': {
       const win = w.windows.find((v) => v.id === s.win);
       if (!win) return done(p);
@@ -271,12 +349,23 @@ function run(p, dt, w) {
         const hip = s.spot ? s.spot.hip : s.hip;
         p.hip = hip !== undefined ? { x: p.x, y: p.y - hip } : null;
       }
-      p.anim = s.spot ? ACT_ANIM[s.act || s.spot.act] : s.anim; // eating on the sofa still looks like eating
+      p.anim = s.spot ? s.spot.anim || ACT_ANIM[s.act || s.spot.act] : s.anim; // eating on the sofa still looks like eating
       if (p.hip && p.surface === 'window') { p.hip.x = p.x; p.hip.y = p.y; } // sitting on a moving window
       if (s.until && w.now >= s.until) { p.hip = null; p.spot = null; done(p); }
       return;
     }
   }
+}
+
+// Plans changed while carrying a box: set it down right here, and let go of any claimed boxes.
+function putDown(p, w) {
+  const home = w.city.lots[p.home.lot];
+  if (!home) return;
+  for (const x of home.boxes) if (x.claimed === p.id && !x.carried) x.claimed = null;
+  const box = p.carry;
+  if (!box) return;
+  Object.assign(box, { carried: false, claimed: null, outside: p.b !== home, f: p.b === home ? p.f : 0, lx: Math.round(p.x - home.x0 - 2) });
+  p.carry = null;
 }
 
 function think(p, w) {
@@ -285,9 +374,11 @@ function think(p, w) {
   const wn = want(p, w);
   if (wn.key === p.wantKey && p.plan.length) return;
   p.wantKey = wn.key; p.hip = null; p.spot = null;
+  putDown(p, w);
   if (p.surface === 'window' && wn.at !== 'out') p.plan = offWindow(p, w);
   else if (wn.at === 'out') p.plan = explore(p, w);
   else if (wn.at === 'shop') p.plan = shopping(p, w);
+  else if (wn.at === 'unpack') p.plan = unpackPlan(p, w);
   else p.plan = activityPlan(p, wn, w);
 }
 
@@ -305,11 +396,14 @@ export function updatePerson(p, dt, w) {
 
 const Z = [[0, 0], [1, 0], [2, 0], [1, 1], [0, 2], [1, 2], [2, 2]];
 export function drawPerson(ctx, p, t) {
-  blend(p.pose, (ANIM[p.anim] || ANIM.stand)(t + (p.seed % 10), p.phase), 0.3);
+  const target = { ...(ANIM[p.anim] || ANIM.stand)(t + (p.seed % 10), p.phase) };
+  if (p.carry) Object.assign(target, { sL: 1.3, eL: 0.7, sR: 1.3, eR: 0.7 }); // both arms round the box
+  blend(p.pose, target, 0.3);
   const head = drawStickman(ctx, p.x, p.y, p.dir, p.pose, p.hip);
+  if (p.carry) drawBox(ctx, p.x + p.dir * 4 - 3, Math.round(p.y - 8), p.carry.size);
   if (p.anim === 'sleep' && p.hip) {
     ctx.fillStyle = p.spot?.item.color || '#4f81bd';
-    ctx.fillRect(Math.round(p.hip.x - 5), Math.round(p.hip.y - 1), 12, 3); // blanket
+    if (!p.spot?.floor) ctx.fillRect(Math.round(p.hip.x - 5), Math.round(p.hip.y - 1), 12, 3); // blanket
     for (let i = 0; i < 3; i++) {
       const k = (t * 0.35 + i / 3 + p.seed * 0.1) % 1;
       ctx.globalAlpha = 1 - k; ctx.fillStyle = '#5b8def';

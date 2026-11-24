@@ -11,6 +11,7 @@ const CODE = ['#569cd6', '#ce9178', '#9cdcfe', '#6a9955', '#c586c0', '#dcdcaa'];
 
 export const TV_CHANNELS = ['news', 'stream'];
 export const PC_APPS = ['sheet', 'code', 'chart', 'mail', 'call'];
+// Home computers: 'game' while gaming, an office app while working from home.
 
 const PROGRAMMES = {
   news(r, w, h, t) {
@@ -113,6 +114,15 @@ const PROGRAMMES = {
       r(x + Math.floor(tw / 2) - 1, y + th - 2, 1, 1, ['#f2c79e', '#c68642', '#8d5524', '#e0ac69'][i]);
       if (i === talking) r(x, y, tw - 1 || 1, 1, '#34a853');
     }
+  },
+
+  game(r, w, h, t, seed) { // a little platformer: running hero, coins, an enemy
+    r(0, 0, w, h, '#5c94fc'); r(0, h - 1, w, 1, '#c84c0c');
+    const scroll = Math.floor(t * 4);
+    for (let x = 0; x < w; x++) if ((x + scroll) % 7 === 0) r(x, 1, 2, 1, '#ffffff');      // clouds
+    for (let x = 0; x < w; x++) if ((x + scroll) % 5 === 2) r(x, h - 3, 1, 1, '#f8d838');  // coins
+    if ((Math.floor(t * 4) + seed) % 9 < 6) r(w - 1 - ((scroll + seed) % w), h - 2, 1, 1, '#9c4a00'); // enemy
+    r(1, h - 2 - (Math.sin(t * 5) > 0.6 ? 1 : 0), 1, 1, '#e40058');                       // hero, hopping
   },
 
   stocks(r, w, h, t, seed) {
