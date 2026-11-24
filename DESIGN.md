@@ -55,7 +55,13 @@ The town grows with its population (see `GROWTH` in `src/city.js`):
 - **TVs** (only while someone's on the sofa): a news channel (studio, anchor, globe graphic, red BREAKING band, scrolling ticker, blinking LIVE light) or a streaming app (browse a hero banner and rows of posters, then a letterboxed movie: sunset drive, night city, boat at sea). They change channel every couple of minutes.
 - **Office computers** (only while someone's at the desk): spreadsheet, code editor, bar chart, email inbox or a video call. The boss watches stocks; reception shows a bouncing-logo screensaver.
 - **Wall clocks** show the town time with moving hands.
-- **Lights**: after dark, rooms with someone awake have warm lights on; empty rooms and bedrooms with sleepers go dark. Outsides darken at night too.
+- **Lights** (after dark lit rooms glow warm, the rest go dark; outsides darken too). Homes remember every switch:
+  - People switch a light on when they go into a dark room to do something, but rarely when just passing through.
+  - Leaving a room, each person follows their habit: careful (45% of people) almost always switch off, average (40%) usually, forgetful (15%) often don't. Kitchens and bathrooms get left on most, and people are more careful when leaving home than when going to another room.
+  - Going to bed, most switch off; some fall asleep with it on (3% / 8% / 25% by habit). About 15% of homes keep a bathroom night light on overnight.
+  - Forgotten lights stay on until someone next passes through, even all day.
+  - Lobbies, reception, stairwells and lifts are always lit. Offices are lit 7:30am–7pm, then the cleaners switch most off by 10pm and about a fifth of rooms stay lit all night; office washrooms use motion sensors. Shops are lit while open (7am–10pm).
+  - Sources: Lutron/Harris household survey (kitchens 49%, bathrooms 28% most often left on), YouGov for Smart Energy GB (38% plan to come back, 29% forget), YouGov sleep study (8% sleep with a light on), WPI study of London offices lit at night.
 - **Appliances**: flames and steam while cooking, the fridge door and light open, shower water, running taps, coffee steam, bubbles in the water cooler, bath water.
 - **Elevator**: a light shows which floor the car is on, and arrows show which way it's going.
 
