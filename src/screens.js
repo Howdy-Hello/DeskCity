@@ -134,6 +134,17 @@ const PROGRAMMES = {
     }
   },
 
+  cctv(r, w, h, t, seed) { // security cameras: four grainy views, switching now and then, a red REC dot
+    r(0, 0, w, h, '#111');
+    const hw = Math.floor(w / 2), hh = Math.floor(h / 2);
+    for (let i = 0; i < 4; i++) {
+      const x = (i % 2) * hw, y = Math.floor(i / 2) * hh, cam = (i + Math.floor(t / 9)) % 5;
+      r(x, y, hw - 1, hh - 1, ['#3a4a3e', '#3e3e48', '#46423a', '#384048', '#40463e'][cam]);
+      r(x, y + hh - 2, hw - 1, 1, '#566'); // a floor
+      const k = (t * 0.25 + i * 0.37 + cam * 0.2) % 1; if (k < 0.6) r(x + Math.floor(k / 0.6 * (hw - 2)), y + 1, 1, hh - 3, '#9aa'); // someone walking through
+    }
+    if (Math.floor(t * 2) % 2) r(w - 1, 0, 1, 1, '#ff3b30');
+  },
   saver(r, w, h, t, seed) {
     r(0, 0, w, h, '#000000');
     const bx = Math.abs(((t * 1.3 + seed) % (2 * (w - 2))) - (w - 2)), by = Math.abs(((t * 0.9) % (2 * (h - 1))) - (h - 1));

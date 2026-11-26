@@ -1,8 +1,20 @@
 // The town clock (adjustable time and day length) and the pixel-art settings panel.
 // Open and close the panel with Control+Option+D (Ctrl+Alt+D on Windows), the tray menu or the Dock icon.
 import { sprite, painter, addGrain, textWidth } from './draw.js';
+import { DAY_NAMES } from './routine.js';
+import { openDev } from './devpanel.js';
 
 const KEY = 'deskcity-clock-v1';
+
+// Display preferences, remembered between launches.
+export const prefs = { sky: true, potato: false }; // sky: show the sun and moon; potato: low CPU and GPU (see main.js)
+try { Object.assign(prefs, JSON.parse(localStorage.getItem('deskcity-prefs')) || {}); } catch {}
+const savePrefs = () => { try { localStorage.setItem('deskcity-prefs', JSON.stringify(prefs)); } catch {} };
+// Another desktop's window changed the clock or a preference: pick it up here too.
+addEventListener('storage', (e) => {
+  if (e.key === 'deskcity-prefs') { try { Object.assign(prefs, JSON.parse(e.newValue) || {}); } catch {} }
+  if (e.key === KEY && clock.persist) clock.load(); // (test pages keep their own clock)
+});
 const MIN = 60e3;
 
 // ---------- the clock ----------
@@ -29,8 +41,8 @@ function changeDay(step) {
 }
 
 // ---------- the panel ----------
-const S = 3;               // screen points per panel pixel
-const PW = 156, PH = 176;  // panel size in pixels
+let S = 3;                 // screen points per panel pixel (smaller on a short screen)
+const PW = 156, PH = 242;  // panel size in pixels
 const C = { danger: '#e57373', off: '#cfc6b8', frame: '#2c3e50', bg: '#f4ecd6', title: '#3b5b7a', ink: '#2a2a2e', soft: '#8d8478', btn: '#e3d7c3', shadow: '#b9ab94', hover: '#f1c40f', white: '#ffffff', line: '#d8ccb6' };
 const tauri = window.__TAURI__?.core;
 const KEYS = /Mac/.test(navigator.userAgent) ? 'CTRL+OPT+D' : 'CTRL+ALT+D';
@@ -42,6 +54,8 @@ let resetArmed = 0;            // reset needs a second click within 3 seconds
 export function setTownActions(actions) { town = actions; }
 const say = (msg) => { note = msg; noteUntil = Date.now() + 2500; };
 const pad = (n) => String(n).padStart(2, '0');
+// e.g. 2.31M or 850K, with a dollar sign
+const money = (c) => `${c < 0 ? '-' : ''}$${Math.abs(c) >= 1e6 ? (Math.abs(c) / 1e6).toFixed(2) + 'M' : Math.round(Math.abs(c) / 1e3) + 'K'}`;
 const lengthLabel = (m) => (m >= 60 ? `${m / 60} HOUR${m > 60 ? 'S' : ''}` : `${m} MIN`);
 
 function draw() {
@@ -61,9 +75,11 @@ function draw() {
   p.rect(1, 1, PW - 2, 11, C.title);
   p.text('DESKCITY SETTINGS', 5, 4, C.white);
   button('close', PW - 13, 1, 12, 'X', close);
+  button('dev', PW - 33, 1, 19, 'DEV', () => { close(); openDev(); }); // the developer's panel
 
   p.text('TOWN TIME', 6, 18, C.soft);
-  const d = new Date(clock.now());
+  const d = new Date(clock.now()), dayName = DAY_NAMES[(d.getDay() + 6) % 7];
+  p.text(dayName, PW - 6 - textWidth(dayName), 18, [5, 6].includes((d.getDay() + 6) % 7) ? '#c0392b' : C.ink); // the day of the week (weekends in red)
   center(`${pad(d.getHours())}:${pad(d.getMinutes())}`, 28, C.ink, 2);
   button('-1h', 6, 27, 17, '-1H', () => clock.set(clock.now() - 60 * MIN));
   button('-10m', 25, 27, 21, '-10M', () => clock.set(clock.now() - 10 * MIN));
@@ -80,9 +96,15 @@ function draw() {
   center(m === 1440 ? 'SAME AS REAL TIME' : `1 TOWN HOUR = ${+(m / 24).toFixed(1)} MIN`, 87, C.soft);
 
   p.rect(6, 97, PW - 12, 1, C.line);
-  p.text('SAVED TOWNS', 6, 102, C.soft);
+  p.text('SUN AND MOON', 6, 103, C.soft);
+  button('sky', PW - 30, 100, 24, prefs.sky ? 'ON' : 'OFF', () => { prefs.sky = !prefs.sky; savePrefs(); }, prefs.sky ? '#9fd5b0' : C.btn);
+  p.text('POTATO MODE', 6, 116, C.soft); p.text('LOW CPU', 58, 116, C.off);
+  button('potato', PW - 30, 113, 24, prefs.potato ? 'ON' : 'OFF', () => { prefs.potato = !prefs.potato; savePrefs(); }, prefs.potato ? '#9fd5b0' : C.btn);
+
+  p.rect(6, 129, PW - 12, 1, C.line);
+  p.text('SAVED TOWNS', 6, 134, C.soft);
   for (let i = 1; i <= 3; i++) {
-    const y = 98 + i * 13, slot = town?.slot(i);
+    const y = 130 + i * 13, slot = town?.slot(i);
     p.text(`SLOT ${i}`, 6, y + 3, C.ink);
     if (slot) {
       const t = new Date(slot.time);
@@ -92,19 +114,28 @@ function draw() {
     button(`load${i}`, PW - 26, y, 20, 'LOAD', slot && (() => { town.load(i); say(`LOADED SLOT ${i}`); }));
   }
   const armed = Date.now() < resetArmed;
-  button('reset', Math.round(PW / 2 - 44), 153, 88, armed ? 'CLICK AGAIN TO RESET' : 'START A NEW TOWN', town && (() => {
+  button('reset', Math.round(PW / 2 - 44), 183, 88, armed ? 'CLICK AGAIN TO RESET' : 'START A NEW TOWN', town && (() => {
     if (armed) { town.reset(); resetArmed = 0; say('NEW TOWN STARTED'); } else resetArmed = Date.now() + 3000;
   }), armed ? C.danger : C.btn);
 
+  const info = town?.info?.();
+  if (info) { // the real estate company
+    p.rect(6, 198, PW - 12, 1, C.line);
+    const cash = money(info.cash);
+    p.text(info.name, 6, 203, C.soft); p.text(cash, PW - 6 - textWidth(cash), 203, info.cash < 0 ? '#c0392b' : C.ink);
+    p.text(`${info.free} FREE HOMES  ${info.hunting} HUNTING  ${info.people} LIVE HERE`, 6, 212, C.soft);
+    if (info.full) p.text('TOWN FULL: ADD A DESKTOP TO GROW', 6, 220, '#c0392b'); // every plot built up as far as it goes
+  }
   const msg = Date.now() < noteUntil ? note : `${KEYS} OR ESC TO CLOSE`;
   center(msg, PH - 8, msg === note ? C.ink : C.soft);
   addGrain(cv, 0.07);
-  shown = `${d.getHours()}:${d.getMinutes()}|${hover}|${m}|${msg}|${armed}`;
+  shown = `${d.getHours()}:${d.getMinutes()}|${hover}|${m}|${msg}|${armed}|${JSON.stringify(info)}|${prefs.sky}|${prefs.potato}`;
 }
 
 const hit = (e) => buttons.find((b) => { const x = e.offsetX / S, y = e.offsetY / S; return x >= b.x && x < b.x + b.w && y >= b.y && y < b.y + b.h; });
 
 function create() {
+  S = Math.max(2, Math.min(3, Math.floor((innerHeight - 24) / PH)));
   cv = sprite(PW, PH);
   cv.style.cssText = `position:fixed;left:50%;top:42%;transform:translate(-50%,-50%);width:${PW * S}px;height:${PH * S}px;image-rendering:pixelated;display:none;z-index:10;filter:drop-shadow(0 6px 0 rgba(0,0,0,0.25))`;
   document.body.appendChild(cv);
@@ -136,7 +167,7 @@ export function tickSettings() {
   if (!isOpen) return;
   const d = new Date(clock.now());
   const msg = Date.now() < noteUntil ? note : `${KEYS} OR ESC TO CLOSE`;
-  if (`${d.getHours()}:${d.getMinutes()}|${hover}|${dayMinutes()}|${msg}|${Date.now() < resetArmed}` !== shown) draw();
+  if (`${d.getHours()}:${d.getMinutes()}|${hover}|${dayMinutes()}|${msg}|${Date.now() < resetArmed}|${JSON.stringify(town?.info?.())}|${prefs.sky}|${prefs.potato}` !== shown) draw();
 }
 
 addEventListener('keydown', (e) => {

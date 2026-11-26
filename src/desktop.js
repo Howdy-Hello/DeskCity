@@ -1,10 +1,22 @@
-// Your other app windows (position and size only, front to back), so people can climb onto them.
+// Your other app windows (position and size only, front to back), so people can climb onto them,
+// plus where the street is and which desktop you're looking at.
 const tauri = window.__TAURI__?.core;
-export const desktop = { windows: [], fake: false };
+// ground: the street level (top of the Dock / taskbar), 0 when unknown.
+// space / spaces: which desktop is showing; each one shows the next stretch of the same long street.
+export const desktop = { windows: [], fake: false, ground: 0, space: 0, spaces: 1, fullscreen: false };
+
+// The app calls this the moment you switch desktops (no waiting for the next poll).
+let pushed = 0;
+window.onSpace = (space, spaces, fullscreen) => { pushed = Date.now(); Object.assign(desktop, { space, spaces, fullscreen }); };
 
 if (tauri) {
   const poll = async () => {
-    try { desktop.windows = await tauri.invoke('desktop_windows'); } catch { desktop.windows = []; }
+    try {
+      const s = await tauri.invoke('desktop_state');
+      // A poll that was already under way when you switched would bring back the old desktop.
+      if (Date.now() - pushed < 1000) { delete s.space; delete s.spaces; delete s.fullscreen; }
+      Object.assign(desktop, s);
+    } catch { desktop.windows = []; }
     setTimeout(poll, 250);
   };
   poll();
