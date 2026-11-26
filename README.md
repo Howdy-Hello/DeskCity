@@ -22,9 +22,10 @@ Press **Control+Option+D** (Ctrl+Alt+D on Windows), click DeskCity's Dock icon, 
 - **Town time**: the day of the week and the time; nudge the clock by 10 minutes or an hour, or match it back to the real clock.
 - **Length of a day**: from 24 hours (real time) down to 1 hour, so a whole town day can go by in an hour.
 - **Potato mode**: for slower computers. Desktops you're not looking at redraw twice a second instead of 30 times, and decorative light (sunbeams, shadows, window halos) is switched off. Everything else is the same.
+- **Speech bubbles**: what people say to each other (and think to themselves) over their heads. On by default.
 - **Saved towns**: three save slots. Save keeps the whole town plus its time and day length; Load brings it back. The town also saves itself automatically every 30 seconds.
 - **Start a new town**: click twice to confirm. Your save slots are kept.
-- **DEV** (top right): the developer's panel: speed everything up (or pause), x-ray, labels and stats overlays, jump the time, make things happen (move-ins, fires, thefts, fights, flu, ambulances, protests) and the town's numbers.
+- **DEV** (top right): the developer's panel: speed everything up (or pause), x-ray, labels and stats overlays, jump the time, make things happen (move-ins, fires, thefts, fights, flu, ambulances, protests, a chat, an argument, gossip, a phone call) and the town's numbers.
 
 ## Build installers
 
@@ -55,6 +56,7 @@ git tag v0.1.0 && git push --tags
 - `src/people.js`: getting around (at their own pace), doing things, and climbing on your windows.
 - `src/venues.js`: restaurants, cafes and pubs: ordering, cooking, serving, eating and drinking.
 - `src/incidents.js`: fires, crime, illness, the emergency services, pollution and protests.
+- `src/social.js`: speech bubbles and their pixel icons, conversations, friendships and moods.
 - `src/city.js`: who lives and works where, how the town grows, saving.
 - `src/settings.js`: the town clock and the settings panel.
 - `src/devpanel.js`: the developer's panel.

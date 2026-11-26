@@ -7,6 +7,7 @@
 //           a factory, everyone rethinks what they're doing (unsticks anyone stuck)
 //   EVENTS  a kitchen fire, burnt toast (a false alarm), a shoplifter, a fight, someone ill, an
 //           ambulance call, a protest at the factory
+//   SOCIAL  two people nearby start a chat, an argument or some gossip; someone takes a phone call
 // The view options are remembered and shared by every desktop's window; everything else is done by
 // the window that runs the town (the others pass it on).
 import { sprite, painter, addGrain, textWidth } from './draw.js';
@@ -16,7 +17,7 @@ try { Object.assign(dev, JSON.parse(localStorage.getItem('deskcity-dev')) || {},
 const saveDev = () => { try { localStorage.setItem('deskcity-dev', JSON.stringify({ xray: dev.xray, labels: dev.labels, stats: dev.stats })); } catch {} };
 addEventListener('storage', (e) => { if (e.key === 'deskcity-dev') try { Object.assign(dev, JSON.parse(e.newValue) || {}); } catch {} });
 
-const PW = 196, PH = 236;
+const PW = 196, PH = 262;
 let S = 3; // screen points per panel pixel (smaller on a short screen)
 const C = { frame: '#1e2a38', bg: '#e9eef2', title: '#2c3e50', ink: '#1e1e22', soft: '#6b7785', btn: '#d5dde4', on: '#9fd5b0', hover: '#f1c40f', shadow: '#aab4be', line: '#c4ced8', warn: '#e57373', white: '#ffffff' };
 const tauri = window.__TAURI__?.core;
@@ -63,8 +64,11 @@ function draw() {
   row(143, [['fire', 'FIRE', () => say(run?.('fire', true))], ['toast', 'BURNT TOAST', () => say(run?.('fire', false))], ['theft', 'THEFT', () => say(run?.('theft'))]]);
   row(156, [['fight', 'FIGHT', () => say(run?.('fight'))], ['ill', 'FLU', () => say(run?.('ill'))], ['hurt', 'AMBULANCE', () => say(run?.('hurt'))], ['protest', 'PROTEST', () => say(run?.('protest'))]]);
 
+  heading('SOCIAL', 174);
+  row(182, [['talk', 'CHAT', () => say(run?.('talk', 'chat'))], ['argue', 'ARGUE', () => say(run?.('talk', 'argue'))], ['gossip', 'GOSSIP', () => say(run?.('talk', 'gossip'))], ['phone', 'PHONE', () => say(run?.('talk', 'phone'))]]);
+
   const n = info?.();
-  heading('TOWN NOW', 174);
+  heading('TOWN NOW', 200);
   if (n) {
     const lines = [
       `${n.people} PEOPLE  ${n.households} HOMES  ${n.kids} KIDS`,
@@ -72,8 +76,9 @@ function draw() {
       `${n.vacant} FREE  ${n.moving} MOVING IN  ${n.building} BUILDING`,
       `$${(n.cash / 1e6).toFixed(1)}M OF $${(n.credit / 1e6).toFixed(0)}M  SMOG ${Math.round(n.pollution * 100)}`,
       `${n.fires} FIRES  ${n.crimes} CRIMES  ${n.sick} ILL  ${n.jailed} IN CELLS`,
+      `${n.talking} TALKING  ${n.friends} FRIENDSHIPS  MOOD ${n.mood > 0 ? '+' : ''}${n.mood}`,
     ];
-    lines.forEach((l, i) => p.text(l, 6, 182 + i * 8, C.ink));
+    lines.forEach((l, i) => p.text(l, 6, 208 + i * 8, C.ink));
   }
   const msg = Date.now() < noteUntil ? note : 'CHANGES ARE NOT SAVED IN SLOTS';
   p.text(msg, Math.round(PW / 2 - textWidth(msg) / 2), PH - 9, msg === note ? C.ink : C.soft);

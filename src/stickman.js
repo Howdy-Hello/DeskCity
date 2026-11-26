@@ -156,6 +156,15 @@ export const ANIM = {
   protest: (t) => ({ sR: PI - 0.25 + 0.25 * sin(t * 4), eR: 0.15, sL: PI - 0.35 + 0.25 * sin(t * 4), eL: 0.2, up: 0.8 * pos(sin(t * 4)), hy: -0.3 }),
   chant: (t) => ({ sR: sin(t * 5) > 0 ? PI - 0.2 : 1.6, eR: sin(t * 5) > 0 ? 0.3 : 1.9, sL: 0.3, eL: 0.4, hx: 0.3 * sin(t * 5) }),
   wave: (t) => ({ sR: PI - 0.4, eR: 0.5 + 0.5 * sin(t * 9), sL: 0.2, eL: 0.3 }),
+  // Talking: laughing (shoulders shaking, head back), pointing, hands on hips, a yawn, a shrug, a facepalm.
+  laugh: (t) => ({ lean: -0.12 + 0.06 * sin(t * 16), sL: 0.9, eL: 1.9, sR: 0.85, eR: 2.0, hy: -0.4 + 0.3 * sin(t * 16), up: 0.3 * pos(sin(t * 16)) }),
+  laughSit: (t) => ({ ...SIT, lean: -0.15 + 0.08 * sin(t * 16), sL: 0.9, eL: 1.9, sR: 0.85, eR: 2.0, hy: -0.3 + 0.3 * sin(t * 16) }),
+  callSit: () => ({ ...SIT, sR: 2.55, eR: 2.75, hx: 0.2 }),
+  point: (t) => ({ lean: 0.12, sR: 1.5 + 0.15 * sin(t * 7), eR: 0.1, sL: 0.6, eL: 1.8, hx: 0.3 }),
+  hips: (t) => ({ lean: -0.05, sL: 0.7, eL: 2.3, sR: 0.65, eR: 2.3, hx: 0.3 * sin(t * 1.5) }),
+  yawn: (t) => { const k = pos(sin(t * 0.9)); return { sR: 0.3 + 2.0 * k, eR: 0.3 + 2.3 * k, sL: 0.2, eL: 0.3, hy: -0.5 * k }; },
+  shrug: (t) => ({ sL: 0.7, eL: 1.7, sR: 0.7, eR: 1.7, hy: 0.4 * pos(sin(t * 3)), up: 0.2 * pos(sin(t * 3)) }),
+  facepalm: () => ({ lean: 0.15, sR: 2.4, eR: 2.6, sL: 0.3, eL: 0.4, hy: 0.6 }),
   // Play and exercise.
   swing: (t) => ({ ...SIT, tL: PI / 2 + 0.55 * sin(t * 2.4), kL: 0.4 + 0.6 * pos(-sin(t * 2.4)), tR: PI / 2 + 0.45 * sin(t * 2.4), kR: 0.5 + 0.6 * pos(-sin(t * 2.4)), sL: PI - 0.3, eL: 0.2, sR: PI - 0.35, eR: 0.25, lean: -0.15 * sin(t * 2.4) }),
   slideDown: () => ({ ...SIT, tL: PI / 2 - 0.2, kL: 0.2, tR: PI / 2 - 0.3, kR: 0.2, lean: -0.35, sL: 2.4, eL: 0.2, sR: 2.5, eR: 0.2 }),

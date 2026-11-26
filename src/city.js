@@ -7,6 +7,7 @@ import { makeCar, parkHome, updateCars, giveCars, nearestLot } from './cars.js';
 import { updateIncidents } from './incidents.js';
 import { tickVenues } from './venues.js';
 import { shiftsFor } from './routine.js';
+import { saveRels, loadRels } from './social.js';
 
 const HOUR = 3600e3;
 const SAVE_KEY = 'deskcity-save-v1';
@@ -109,6 +110,7 @@ export class City {
     this.cars = []; this.nextCar = 1; // households' own cars
     this.fleet = { fire: null, police: null, ambulance: null }; // the emergency services' vehicles
     this.crimes = []; this.patients = [];
+    this.rels = new Map(); this.convos = []; // who knows whom, and who's talking right now (social.js)
     this.pollution = 0; this.protests = 0; this.protest = null; this.factoryBan = 0;
     this.factoryMind = Math.random() < 0.6; // whether this town would ever build a factory
     if (saved) this.restore(saved, now); else this.found(now);
@@ -516,10 +518,10 @@ export class City {
     const orders = this.orders.map((o) => ({ lot: this.lots.indexOf(o.b), unit: o.unit, items: o.items, due: o.due }));
     const moves = this.moves.map((m) => ({ lot: this.lots.indexOf(m.b), unit: m.unit, size: m.size, hh: m.hh, due: m.due }));
     const realty = { cash: this.realty.cash, hunters: this.hunters, moves, nextHunter: this.nextHunter, lastDay: this.lastDay };
-    const people = this.people.map((p) => ({ id: p.id, seed: p.seed, jitter: p.jitter, home: p.home, job: p.job, newcomer: p.newcomer, hh: p.hh, kid: p.kid || undefined, jail: p.jail || undefined, anger: p.anger ? Math.round(p.anger * 100) / 100 : undefined, sick: p.sick && !p.sick.ambulance ? p.sick : undefined, shoppedDay: p.shoppedDay }));
+    const people = this.people.map((p) => ({ id: p.id, seed: p.seed, jitter: p.jitter, home: p.home, job: p.job, newcomer: p.newcomer, hh: p.hh, kid: p.kid || undefined, jail: p.jail || undefined, anger: p.anger ? Math.round(p.anger * 100) / 100 : undefined, sick: p.sick && !p.sick.ambulance ? p.sick : undefined, shoppedDay: p.shoppedDay, mood: p.mood !== undefined ? Math.round(p.mood * 100) / 100 : undefined }));
     const town = { pollution: this.pollution, protests: this.protests, protest: this.protest, factoryBan: this.factoryBan, factoryMind: this.factoryMind };
     const cars = this.cars.map((c) => ({ owner: c.owner, kind: c.kind, paint: c.paint, park: c.park })); // a car out driving is saved as parked at home
-    return { lots, people, orders, realty, cars, town, nextId: this.nextId };
+    return { lots, people, orders, realty, cars, town, social: saveRels(this), nextId: this.nextId };
   }
   save() { try { localStorage.setItem(SAVE_KEY, JSON.stringify(this.snapshot())); } catch {} }
   static load() {
@@ -562,7 +564,7 @@ export class City {
       let job = d.job && map(d.job.lot) !== null ? { lot: map(d.job.lot), desk: d.job.desk, shift: d.job.shift || 0 } : null;
       if (job && !(this.lots[job.lot]?.allSpots('work').length > job.desk)) job = null;
       const p = makePerson({ ...d, home: { ...d.home, lot: home }, job });
-      p.newcomer = !!d.newcomer; p.shoppedDay = d.shoppedDay ?? -1;
+      p.newcomer = !!d.newcomer; p.shoppedDay = d.shoppedDay ?? -1; if (d.mood !== undefined) p.mood = d.mood;
       p.b = undefined;
       this.people.push(p);
     }
@@ -578,6 +580,7 @@ export class City {
       if (!g.some((p) => FLATPACK[spots[p.home.bed]?.item.kind] && spots[p.home.bed].item.kind === 'bed2')) continue;
       for (const p of g) if (spots[p.home.bed]?.item.kind === 'bed') { p.kid = true; p.job = null; }
     }
+    loadRels(this, s.social);
     if (s.town) Object.assign(this, { pollution: s.town.pollution || 0, protests: s.town.protests || 0, protest: s.town.protest || null, factoryBan: s.town.factoryBan || 0, factoryMind: s.town.factoryMind ?? this.factoryMind });
     if (s.realty) {
       Object.assign(this.realty, { cash: s.realty.cash });

@@ -16,6 +16,7 @@ import { theft, hurt } from './incidents.js';
 import { send, listen, frame, apply, structureKey } from './sync.js';
 import { isWeekend, dow } from './routine.js';
 import { drawVenue } from './venues.js';
+import { updateSocial, drawBubbles, forceTalk, isFriend, moodOf } from './social.js';
 import { drawFireInside, drawFireOutside, drawBay, drawFleet, drawSmoke, drawHaze, startFire } from './incidents.js';
 
 // Browser testing options (they never touch your saved town):
@@ -164,6 +165,7 @@ function devRun(name, arg) {
     }
     case 'ill': { const p = pickAdult(), hosp = city.lots.some((b) => b?.type === 'hospital' && b.ready()); if (!p) return 'NOBODY'; p.sick = { kind: 'flu', clinic: hosp, until: now + 2 * 864e5 }; p.wantKey = null; return hosp ? 'FLU: OFF TO THE CLINIC' : 'FLU: OFF TO BED'; }
     case 'hurt': { const p = pickAdult(); if (!p) return 'NOBODY'; if (!city.lots.some((b) => b?.type === 'hospital' && b.ready())) return 'NO HOSPITAL'; hurt(city, w, p, 3); return 'AMBULANCE CALLED'; }
+    case 'talk': return forceTalk(city, w, arg);
     case 'protest': {
       const lot = city.lots.findIndex((b) => b?.type === 'factory' && b.ready() && !b.demolish);
       if (lot < 0) return 'NO FACTORY';
@@ -183,6 +185,8 @@ function devInfo() { // the town's numbers, worked out at most once a second
     moving: city.moves.length, building: city.lots.filter((b) => b && (b.build || b.upgrade || b.demolish)).length,
     cash: city.realty.cash, credit: city.creditLimit(), pollution: city.pollution || 0, fires: city.lots.filter((b) => b?.fire).length,
     crimes: city.crimes.length, sick: city.people.filter((p) => p.sick).length, jailed: city.people.filter((p) => p.jail).length,
+    talking: city.convos.reduce((k, c) => k + c.members.length, 0), friends: [...city.rels.values()].filter(isFriend).length,
+    mood: Math.round(city.people.reduce((k, p) => k + moodOf(p), 0) / Math.max(1, city.people.length) * 100),
   });
 }
 setDevActions({
@@ -273,6 +277,7 @@ function step(ms, draw = true, sim = true) {
     city.update(w);
     for (const b of city.lots) b?.elevator?.update(dt);
     for (const p of city.people) updatePerson(p, dt, w);
+    updateSocial(city, w);
   }
   t = time('sim', t);
   const inside = new Map();
@@ -347,6 +352,7 @@ function paint(c, w, inside, isLive) {
     v.draw(c, w.t, night);
     c.globalAlpha = 1;
   }
+  if (prefs.bubbles !== false) drawBubbles(c, city.people, w.t); // speech bubbles, over everything in the town
   if (dev.labels) { // what everyone's doing, over their heads
     const pt = painter(c);
     for (const p of city.people) {

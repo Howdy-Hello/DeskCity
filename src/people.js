@@ -8,6 +8,7 @@ import { findSeat, mealStep, staffStep, leaveVenue } from './venues.js';
 import { cooking, spray, theft, protestOn, stayPlan, hurt } from './incidents.js';
 import { ROOMS } from './furniture.js';
 import { painter } from './draw.js';
+import { talkPose } from './social.js';
 
 const WALK = 14, STAIRS = 10, CLIMB = 9, GRAVITY = 300; // cells per second (and per second²)
 const MIN = 60e3; // one minute of town time, in ms
@@ -867,6 +868,15 @@ function run(p, dt, w) {
       return;
     }
     case 'staff': staffStep(p, s, dt, w, STAFF_HELP); return;
+    case 'chat': { // stopped for a chat: face them, and stay until it's over
+      const c = s.convo;
+      if (!c || c.ended || !c.members.includes(p)) return done(p);
+      const other = c.members.find((q) => q !== p);
+      if (other && Math.abs(other.x - p.x) > 0.5) p.dir = Math.sign(other.x - p.x);
+      if (other && Math.abs(other.x - p.x) < 4) { walkTo(p, p.x + (p.x >= other.x ? 1 : -1) * 2, dt, w); return; } // not nose to nose
+      p.anim = 'stand';
+      return;
+    }
     case 'turn': { // waiting for the bathroom (or the fridge...): go when it's free
       const spot = pickSpot(p, s.b, s.act, s.unit);
       if (!spot) { p.anim = 'wait'; return; }
@@ -1074,6 +1084,7 @@ function think(p, w) {
 
 // Personal space: someone standing around steps aside from anyone right on top of them.
 const STILL = new Set(['stand', 'wait', ...IDLE]);
+const SEATED_TALK = new Set(['sit', 'eat', 'tv', 'drink', 'cheers', 'talkSit', 'lunch', 'coffee']);
 function makeRoom(p, dt, w) {
   if (!STILL.has(p.anim) || p.hip || p.inCar || p.surface === 'elev' || p.surface === 'window') return;
   const near = everyone.find((q) => q !== p && !q.inCar && !q.aboard && q.b === p.b && q.f === p.f && Math.abs(q.y - p.y) < 3 && Math.abs(q.x - p.x) < 5 && (p.b || Math.abs((q.depth || 0) - (p.depth || 0)) < 1));
@@ -1093,6 +1104,12 @@ export function updatePerson(p, dt, w) {
   else if (w.t < p.landEnd) p.anim = 'land';
   else run(p, dt, w);
   if (!TOOL_STEPS.has(p.plan[0]?.t)) p.tool = null; // tools only while they're being used
+  if (p.convo && !(p.v > 0)) { // talking: hands going, laughing, nodding, arms crossed...
+    const pose = talkPose(p);
+    if (pose && (STILL.has(p.anim) || p.hip && SEATED_TALK.has(p.anim))) p.anim = pose;
+    const other = p.convo.members.find((q) => q !== p);
+    if (other && !p.spot && !p.hip && Math.abs(other.x - p.x) > 1 && p.plan[0]?.t !== 'staff') p.dir = Math.sign(other.x - p.x); // turn to face them
+  }
   makeRoom(p, dt, w);
   // Outside, people keep to their own bit of the pavement (and step into the doorway to go in).
   const next = p.plan[0], toDoor = next?.door && Math.abs(next.x - p.x) < 14;
@@ -1167,6 +1184,7 @@ export function drawPerson(ctx, p, t) {
     ctx.fillStyle = '#d35400'; ctx.fillRect(Math.round(hip.x) - 2, Math.round(hip.y) + 1, 6, 1);
   }
   const head = drawStickman(ctx, p.x, y, p.dir, p.pose, hip, '#1e1e22', p.kid ? 0.72 : 1);
+  p.headX = head.x; p.headY = head.y - 2; p.headT = t; // where a speech bubble goes
   if (p.carry) { // held in front, kept inside the walls (stairwells run along the outside wall)
     const w = BOX[p.carry.size][0];
     let x = p.dir > 0 ? p.x + 1 : p.x - 1 - w;
