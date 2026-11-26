@@ -23,6 +23,7 @@ Press **Control+Option+D** (Ctrl+Alt+D on Windows), click DeskCity's Dock icon, 
 - **Length of a day**: from 24 hours (real time) down to 1 hour, so a whole town day can go by in an hour.
 - **Potato mode**: for slower computers. Desktops you're not looking at redraw twice a second instead of 30 times, and decorative light (sunbeams, shadows, window halos) is switched off. Everything else is the same.
 - **Speech bubbles**: what people say to each other (and think to themselves) over their heads. On by default.
+- **Passports**: OPEN shows someone's passport. While any panel's open you can also just click anyone in town. It shows their name, age and birthday, household, job, what they're doing, their needs (energy, food, fun, social, hygiene, health) and mood, a calendar of their week, today's to-do list and work, the people they know, and their diary.
 - **Saved towns**: three save slots. Save keeps the whole town plus its time and day length; Load brings it back. The town also saves itself automatically every 30 seconds.
 - **Start a new town**: click twice to confirm. Your save slots are kept.
 - **DEV** (top right): the developer's panel: speed everything up (or pause), x-ray, labels and stats overlays, jump the time, make things happen (move-ins, fires, thefts, fights, flu, ambulances, protests, a chat, an argument, gossip, a phone call) and the town's numbers.
@@ -57,6 +58,8 @@ git tag v0.1.0 && git push --tags
 - `src/venues.js`: restaurants, cafes and pubs: ordering, cooking, serving, eating and drinking.
 - `src/incidents.js`: fires, crime, illness, the emergency services, pollution and protests.
 - `src/social.js`: speech bubbles and their pixel icons, conversations, friendships and moods.
+- `src/life.js`: names, ages and birthdays, needs, the diary, the work people get through, and the passport card.
+- `src/passport.js`: the passport panel, and picking people out in town.
 - `src/city.js`: who lives and works where, how the town grows, saving.
 - `src/settings.js`: the town clock and the settings panel.
 - `src/devpanel.js`: the developer's panel.
@@ -66,5 +69,4 @@ git tag v0.1.0 && git push --tags
 ## Roadmap
 
 - People roles, starting with construction workers who build and repair
-- Socialising: people chatting when they meet in the street
 - More places: park, arcade, library

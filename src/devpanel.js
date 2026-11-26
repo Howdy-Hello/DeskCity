@@ -11,6 +11,7 @@
 // The view options are remembered and shared by every desktop's window; everything else is done by
 // the window that runs the town (the others pass it on).
 import { sprite, painter, addGrain, textWidth } from './draw.js';
+import { interact } from './desktop.js';
 
 export const dev = { speed: 1, xray: false, labels: false, stats: false };
 try { Object.assign(dev, JSON.parse(localStorage.getItem('deskcity-dev')) || {}, { speed: 1 }); } catch {}
@@ -20,7 +21,6 @@ addEventListener('storage', (e) => { if (e.key === 'deskcity-dev') try { Object.
 const PW = 196, PH = 262;
 let S = 3; // screen points per panel pixel (smaller on a short screen)
 const C = { frame: '#1e2a38', bg: '#e9eef2', title: '#2c3e50', ink: '#1e1e22', soft: '#6b7785', btn: '#d5dde4', on: '#9fd5b0', hover: '#f1c40f', shadow: '#aab4be', line: '#c4ced8', warn: '#e57373', white: '#ffffff' };
-const tauri = window.__TAURI__?.core;
 let cv = null, isOpen = false, hover = null, buttons = [], shown = '', note = '', noteUntil = 0;
 let run = null, info = null, back = null; // run(name, arg) -> message; info() -> numbers; back(): to the settings panel
 export function setDevActions(a) { run = a.run; info = a.info; back = a.back; }
@@ -101,11 +101,11 @@ function create() {
 export function openDev() {
   if (!cv) create();
   isOpen = true; cv.style.display = 'block'; draw();
-  tauri?.invoke('set_interactive', { on: true });
+  interact('dev', true);
 }
 function close() {
   isOpen = false; hover = null; cv.style.display = 'none';
-  tauri?.invoke('set_interactive', { on: false });
+  interact('dev', false);
 }
 export function tickDev() { if (isOpen && key() !== shown) draw(); }
 addEventListener('keydown', (e) => { if (e.key === 'Escape' && isOpen) close(); });

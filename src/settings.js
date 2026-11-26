@@ -3,6 +3,7 @@
 import { sprite, painter, addGrain, textWidth } from './draw.js';
 import { DAY_NAMES } from './routine.js';
 import { openDev } from './devpanel.js';
+import { interact } from './desktop.js';
 
 const KEY = 'deskcity-clock-v1';
 
@@ -42,7 +43,7 @@ function changeDay(step) {
 
 // ---------- the panel ----------
 let S = 3;                 // screen points per panel pixel (smaller on a short screen)
-const PW = 156, PH = 255;  // panel size in pixels
+const PW = 156, PH = 268;  // panel size in pixels
 const C = { danger: '#e57373', off: '#cfc6b8', frame: '#2c3e50', bg: '#f4ecd6', title: '#3b5b7a', ink: '#2a2a2e', soft: '#8d8478', btn: '#e3d7c3', shadow: '#b9ab94', hover: '#f1c40f', white: '#ffffff', line: '#d8ccb6' };
 const tauri = window.__TAURI__?.core;
 const KEYS = /Mac/.test(navigator.userAgent) ? 'CTRL+OPT+D' : 'CTRL+ALT+D';
@@ -102,11 +103,13 @@ function draw() {
   button('potato', PW - 30, 113, 24, prefs.potato ? 'ON' : 'OFF', () => { prefs.potato = !prefs.potato; savePrefs(); }, prefs.potato ? '#9fd5b0' : C.btn);
   p.text('SPEECH BUBBLES', 6, 129, C.soft);
   button('bubbles', PW - 30, 126, 24, prefs.bubbles ? 'ON' : 'OFF', () => { prefs.bubbles = !prefs.bubbles; savePrefs(); }, prefs.bubbles ? '#9fd5b0' : C.btn);
+  p.text('PASSPORTS', 6, 142, C.soft); p.text('OR CLICK SOMEONE', 46, 142, C.off); // who someone is, how they are, their week
+  button('passport', PW - 30, 139, 24, 'OPEN', town?.passport && (() => { close(); town.passport(); }));
 
-  p.rect(6, 142, PW - 12, 1, C.line);
-  p.text('SAVED TOWNS', 6, 147, C.soft);
+  p.rect(6, 155, PW - 12, 1, C.line);
+  p.text('SAVED TOWNS', 6, 160, C.soft);
   for (let i = 1; i <= 3; i++) {
-    const y = 143 + i * 13, slot = town?.slot(i);
+    const y = 156 + i * 13, slot = town?.slot(i);
     p.text(`SLOT ${i}`, 6, y + 3, C.ink);
     if (slot) {
       const t = new Date(slot.time);
@@ -116,17 +119,17 @@ function draw() {
     button(`load${i}`, PW - 26, y, 20, 'LOAD', slot && (() => { town.load(i); say(`LOADED SLOT ${i}`); }));
   }
   const armed = Date.now() < resetArmed;
-  button('reset', Math.round(PW / 2 - 44), 196, 88, armed ? 'CLICK AGAIN TO RESET' : 'START A NEW TOWN', town && (() => {
+  button('reset', Math.round(PW / 2 - 44), 209, 88, armed ? 'CLICK AGAIN TO RESET' : 'START A NEW TOWN', town && (() => {
     if (armed) { town.reset(); resetArmed = 0; say('NEW TOWN STARTED'); } else resetArmed = Date.now() + 3000;
   }), armed ? C.danger : C.btn);
 
   const info = town?.info?.();
   if (info) { // the real estate company
-    p.rect(6, 211, PW - 12, 1, C.line);
+    p.rect(6, 224, PW - 12, 1, C.line);
     const cash = money(info.cash);
-    p.text(info.name, 6, 216, C.soft); p.text(cash, PW - 6 - textWidth(cash), 216, info.cash < 0 ? '#c0392b' : C.ink);
-    p.text(`${info.free} FREE HOMES  ${info.hunting} HUNTING  ${info.people} LIVE HERE`, 6, 225, C.soft);
-    if (info.full) p.text('TOWN FULL: ADD A DESKTOP TO GROW', 6, 233, '#c0392b'); // every plot built up as far as it goes
+    p.text(info.name, 6, 229, C.soft); p.text(cash, PW - 6 - textWidth(cash), 229, info.cash < 0 ? '#c0392b' : C.ink);
+    p.text(`${info.free} FREE HOMES  ${info.hunting} HUNTING  ${info.people} LIVE HERE`, 6, 238, C.soft);
+    if (info.full) p.text('TOWN FULL: ADD A DESKTOP TO GROW', 6, 246, '#c0392b'); // every plot built up as far as it goes
   }
   const msg = Date.now() < noteUntil ? note : `${KEYS} OR ESC TO CLOSE`;
   center(msg, PH - 8, msg === note ? C.ink : C.soft);
@@ -152,13 +155,13 @@ function open() {
   isOpen = true;
   cv.style.display = 'block';
   draw();
-  tauri?.invoke('set_interactive', { on: true });
+  interact('settings', true);
 }
 function close() {
   isOpen = false;
   hover = null;
   cv.style.display = 'none';
-  tauri?.invoke('set_interactive', { on: false });
+  interact('settings', false);
 }
 
 export function toggleSettings() { isOpen ? close() : open(); }

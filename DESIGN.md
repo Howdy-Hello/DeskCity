@@ -238,11 +238,42 @@ People notice each other. What they say shows in **speech bubbles** over their h
 - **Saying things while doing things.** Ordering (a bowl of noodles, a beer), THX when it comes, a grumble at the clock when it doesn't, ENJOY from the waiter, the cashier ringing it up; chanting at the protest; shouting in a fight; OW; a cashier on the phone to the police; the officer's STOP; the firefighter's hose; the kids' WHEE and YAY on the slide and swings; the doctor's thermometer; the hand up in class; the lazy ones' MEH as the fire alarm goes off; someone waiting too long for the lift.
 - **Thoughts.** Now and then someone thinks about what's next (dinner, a beer, bed, work, the gym) or how they feel (tired, ill, the smog, Monday morning, Friday evening, happy, fed up), in a thought cloud.
 
-**Relationships.** Every pair of people has how much they like each other (-1 to 1) and how well they know each other (how often they've talked). Housemates start close; coworkers and neighbours know each other by sight. Good conversations make friends (who then wave, stop to chat, and join in); boring ones, rude exits and arguments sour things, and people who don't get on argue next time. Saved with the town.
+**Relationships.** Every pair of people has how much they like each other (-1 to 1) and how well they know each other (how often they've talked). Housemates start close; coworkers and neighbours know each other by sight. Good conversations make friends (who then wave, stop to chat, and join in); boring ones, rude exits and arguments sour things. People who don't get on mostly keep out of each other's way, and argue when they don't. Saved with the town.
 
-**Moods.** Everyone has a mood around their own usual cheerfulness: a good chat lifts it, being walked out on or argued with lowers it, and it drifts back over ten minutes or so. A bad mood makes a hothead more likely to start an argument.
+**Moods.** Everyone has a mood around their own usual cheerfulness, nudged by how their needs are going (below): a good chat lifts it, being walked out on or argued with lowers it, and it drifts back over ten minutes or so. A bad mood makes a hothead more likely to start an argument.
 
 The window that runs the town decides who says what; the other desktops' windows get each bubble with the frame and show it at the same age. Settings: SPEECH BUBBLES turns them off.
+
+### Who they are, and how they're doing (see `src/life.js`)
+
+Everyone has a **name** (first names from all over; families share a surname, most couples do, nobody at home shares a first name), an **age** and a **birthday** (worked out from their household: children 4 to 12, parents mostly 26 to 48, roommates young, couples and people on their own anything up to their eighties), and the day they **moved in**. On their birthday they turn a year older, and someone at home (or a friend) makes a fuss over dinner: a party popper, HAPPY and a cake.
+
+**Needs**, from empty to full, follow what they're actually doing, in town time:
+
+- **Energy**: sleep fills it; work, school and exercise wear it down fastest.
+- **Food**: meals fill it (school has lunch); it drains all day, more slowly overnight.
+- **Fun**: TV, games, the pub, the playground and a good chat; work, school and homework drain it.
+- **Social**: time spent talking (arguing doesn't count) and other people in the room; being snubbed stings.
+- **Hygiene**: a shower or a bath; exercise is the quickest way to lose it.
+- **Health**: illness and injury, and the factory's smog when you're outside.
+
+They feed back lightly rather than taking over the routine: whatever's running low shows up in thought bubbles (a yawn, a plate and a question mark, a lonely person), lonely people start more conversations, and their mood drifts with how their needs are going overall.
+
+**The diary** keeps the day: the parts of their routine (woke up, went to work at VOXMI, cooked dinner), fire alarms, fights, arrests, getting ill and better, birthdays, moving in, and the conversations worth remembering (an argument, storming off, being snubbed, gossip, a new friend; an ordinary chat or phone call at most every 45 minutes). It isn't saved.
+
+**Work done today** comes from the tasks staff actually finish (each one counts): customers served, plates served, dishes made, lessons taught, patients seen, parts made, visitors greeted; office workers answer emails and file reports by the hour. With the hours they've spent on each kind of thing, it resets at midnight.
+
+### The passport (see `src/passport.js`)
+
+Click anyone in town while the town is taking clicks (the settings panel, the developer's panel or a passport is open), or OPEN in settings. Their name shows over them as you point at them; a yellow arrow bobs over whoever's passport is open. The panel goes on the far side of the screen from them, and they can be flicked through with < and >.
+
+- **ID**: a live photo (their pose right now), name, age and birthday, household, address, job and shift, what they're doing this minute, their six needs and mood as bars, their personality (early bird, chatty, grumpy, hot-headed, gym regular, light fingers...) and three likes.
+- **Calendar**: their plan like a calendar app. **Day**: an hour grid with coloured events (work blue, school green, meals yellow, the pub brown, sleep pale) and a red line for now, with an agenda beside it so the short ones can be read too. **Week**: seven columns, today's date in a blue circle; click a day to open it. This week and next; hover for the times and where.
+- **Tasks**: today's to-do list (work or school, homework, the school run, shopping, cooking, the gym), each ticked off, in progress, or missed (off sick, say); their work today (hours done and what they got through) or a child's school report; and how they've spent the day so far, as a bar.
+- **People**: their household, then everyone they know, closest first: best friend, friend, coworker, neighbour, acquaintance, not keen, rival, enemy, with how well they get on and how often they've talked. Click one to open theirs.
+- **Diary**: the day so far, newest first.
+
+The window that runs the town makes the cards (at most twice a second); another desktop's window asks for the ones it's showing and gets them with each frame.
 
 ## Keeping it light
 

@@ -32,3 +32,13 @@ if (tauri) {
     ];
   }, 50);
 }
+
+// While any panel is open (settings, the developer's panel, a passport) the town takes clicks and
+// keys; when the last one closes it goes back to letting everything through.
+const holders = new Set();
+export function interact(who, on) {
+  const was = holders.size > 0;
+  if (on) holders.add(who); else holders.delete(who);
+  if (was !== holders.size > 0) tauri?.invoke('set_interactive', { on: !was });
+}
+export const interactive = () => holders.size > 0;

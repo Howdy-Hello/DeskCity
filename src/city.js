@@ -115,7 +115,7 @@ export class City {
     this.factoryMind = Math.random() < 0.6; // whether this town would ever build a factory
     if (saved) this.restore(saved, now); else this.found(now);
     this.place(this.W, this.G);
-    for (const p of this.people) if (p.b === undefined) this.putHome(p);
+    for (const p of this.people) if (p.b === undefined) { this.putBack(p, p.savedAt); delete p.savedAt; }
     for (const c of this.cars) if (!c.park) parkHome(this, c);
     if (saved && !saved.cars) giveCars(this); // a town from before cars: about half the households have one
   }
@@ -216,7 +216,7 @@ export class City {
     const hh = this.nextId, out = [];
     beds.forEach((bed, i) => {
       const kid = i >= h.adults;
-      const p = makePerson({ id: this.nextId++, seed: randInt() % 100000, jitter: (Math.random() - 0.5) * 0.6, home: { lot, unit, bed }, job: kid ? null : this.freeDesk(), hh, kid });
+      const p = makePerson({ id: this.nextId++, seed: randInt() % 100000, jitter: (Math.random() - 0.5) * 0.6, home: { lot, unit, bed }, job: kid ? null : this.freeDesk(), hh, kid, kin: h.kind });
       this.people.push(p); out.push(p);
     });
     return out;
@@ -243,6 +243,22 @@ export class City {
   putHome(p) {
     const b = this.lots[p.home.lot];
     Object.assign(p, { b, f: 0, x: b.doorX() + 6, y: b.feetY(0), surface: 'floor', plan: [], wantKey: null });
+  }
+  // Where someone is, for the save. Mid-ride or mid-stairs counts as the floor they're heading for;
+  // someone in a car or a van is saved as at home (the car is saved parked there).
+  whereIs(p) {
+    if (p.inCar || p.aboard) return undefined;
+    if (!p.b) return { x: Math.round(p.x), dir: p.dir };
+    const s = p.plan[0], f = p.surface === 'elev' ? Math.round(p.b.elevator.pos) : s?.t === 'stairs' && s.path ? s.to : p.f;
+    return { lot: this.lots.indexOf(p.b), f, x: Math.round(p.x - p.b.x0), dir: p.dir };
+  }
+  // Back where they were when the town was saved (their day plan picks up from there), or home if
+  // that spot is gone.
+  putBack(p, at) {
+    const b = at?.lot >= 0 ? this.lots[at.lot] : null;
+    if (b?.ready() && b.L.rooms.some((r) => r.f === at.f)) Object.assign(p, { b, f: at.f, x: b.x0 + at.x, y: b.feetY(at.f), surface: 'floor', dir: at.dir || 1, plan: [], wantKey: null });
+    else if (at && at.lot === undefined) Object.assign(p, { b: null, f: 0, x: Math.max(0, Math.min(this.width(), at.x)), y: this.G, surface: 'ground', dir: at.dir || 1, plan: [], wantKey: null });
+    else this.putHome(p);
   }
 
   // ---------- growth ----------
@@ -518,7 +534,7 @@ export class City {
     const orders = this.orders.map((o) => ({ lot: this.lots.indexOf(o.b), unit: o.unit, items: o.items, due: o.due }));
     const moves = this.moves.map((m) => ({ lot: this.lots.indexOf(m.b), unit: m.unit, size: m.size, hh: m.hh, due: m.due }));
     const realty = { cash: this.realty.cash, hunters: this.hunters, moves, nextHunter: this.nextHunter, lastDay: this.lastDay };
-    const people = this.people.map((p) => ({ id: p.id, seed: p.seed, jitter: p.jitter, home: p.home, job: p.job, newcomer: p.newcomer, hh: p.hh, kid: p.kid || undefined, jail: p.jail || undefined, anger: p.anger ? Math.round(p.anger * 100) / 100 : undefined, sick: p.sick && !p.sick.ambulance ? p.sick : undefined, shoppedDay: p.shoppedDay, mood: p.mood !== undefined ? Math.round(p.mood * 100) / 100 : undefined }));
+    const people = this.people.map((p) => ({ id: p.id, seed: p.seed, jitter: p.jitter, home: p.home, job: p.job, newcomer: p.newcomer, hh: p.hh, kid: p.kid || undefined, jail: p.jail || undefined, anger: p.anger ? Math.round(p.anger * 100) / 100 : undefined, sick: p.sick && !p.sick.ambulance ? p.sick : undefined, shoppedDay: p.shoppedDay, mood: p.mood !== undefined ? Math.round(p.mood * 100) / 100 : undefined, kin: p.kin, born: p.born, since: p.since, needs: p.needs?.map((v) => Math.round(v * 100) / 100), at: this.whereIs(p), doneKey: p.doneKey || undefined }));
     const town = { pollution: this.pollution, protests: this.protests, protest: this.protest, factoryBan: this.factoryBan, factoryMind: this.factoryMind };
     const cars = this.cars.map((c) => ({ owner: c.owner, kind: c.kind, paint: c.paint, park: c.park })); // a car out driving is saved as parked at home
     return { lots, people, orders, realty, cars, town, social: saveRels(this), nextId: this.nextId };
@@ -565,7 +581,7 @@ export class City {
       if (job && !(this.lots[job.lot]?.allSpots('work').length > job.desk)) job = null;
       const p = makePerson({ ...d, home: { ...d.home, lot: home }, job });
       p.newcomer = !!d.newcomer; p.shoppedDay = d.shoppedDay ?? -1; if (d.mood !== undefined) p.mood = d.mood;
-      p.b = undefined;
+      p.doneKey = d.doneKey; p.savedAt = d.at; p.b = undefined; // placed once the street is laid out (replace)
       this.people.push(p);
     }
     // Towns from before households: whoever shares a home is one household; in a home of three or

@@ -17,6 +17,9 @@ import { send, listen, frame, apply, structureKey } from './sync.js';
 import { isWeekend, dow } from './routine.js';
 import { drawVenue } from './venues.js';
 import { updateSocial, drawBubbles, forceTalk, isFriend, moodOf } from './social.js';
+import { updateLife, card as lifeCard, fullName } from './life.js';
+import { open as openPassport, setPassportActions, tickPassport, drawMarks, setHoverPerson, passportOf } from './passport.js';
+import { interactive } from './desktop.js';
 import { drawFireInside, drawFireOutside, drawBay, drawFleet, drawSmoke, drawHaze, startFire } from './incidents.js';
 
 // Browser testing options (they never touch your saved town):
@@ -75,6 +78,7 @@ if (TEST) { // peek(x, y, w, h, k): a magnified live view of part of the screen,
     cancelAnimationFrame(window.peekRaf); draw();
   };
 }
+if (TEST) { window.passport = (id) => openPassport(id ?? city.people[0]?.id); window.cardOf = (id) => cardOf(id); }
 if (TEST) { window.frameAt = (ms) => loop(ms); window.lastFrame = () => last; window.devRun = (n, a) => devRun(n, a); } // drive frames by hand (when the page is in the background)
 if (TEST) { window.city = city; window.world = () => lastW; window.view = () => deskIndex() * W; window.fire = (lot, real = true) => { const b = city.lots[lot], it = b?.L.items.find((i) => i.kind === 'stove' || i.kind === 'grill') || b?.L.items[0]; if (it) startFire(city, lastW, b, it.x, it.f, real); }; } // for poking at in the browser console
 
@@ -195,6 +199,51 @@ setDevActions({
   back: () => toggleSettings(),
 });
 
+// ---------- passports (see passport.js) ----------
+// The town window makes the cards (twice a second at most); other desktops' windows ask for the ones
+// they're showing and get them with each frame.
+const cards = new Map(), watched = new Map(), cardsIn = {}, asked = {};
+function cardOf(id) {
+  const c = cards.get(id);
+  if (c && performance.now() - c.at < 500) return c.card;
+  const p = city.people.find((q) => q.id === id);
+  if (!p || !lastW) return null;
+  const made = lifeCard(city, lastW, p);
+  cards.set(id, { at: performance.now(), card: made });
+  return made;
+}
+const watchedCards = () => { const out = {}; for (const [id, at] of watched) { if (performance.now() - at > 3000) watched.delete(id); else out[id] = cardOf(id); } return out; };
+const ask = (id) => { if (!(performance.now() - (asked[id] || 0) < 1000)) { asked[id] = performance.now(); send({ type: 'cmd', name: 'card', arg: id }); } };
+const remote = (id) => { ask(id); return cardsIn[id] || null; };
+setPassportActions({
+  card: (id) => (LEADER ? cardOf(id) : remote(id)),
+  person: (id) => city.people.find((q) => q.id === id),
+  people: () => city.people,
+  screenX: (id) => { const p = city.people.find((q) => q.id === id); return p ? (p.x - deskIndex() * W) / W : null; },
+});
+const nameFor = (p) => (LEADER ? fullName(p, city) : remote(p.id) && `${cardsIn[p.id].first} ${cardsIn[p.id].last}`);
+function openSomeone() { // OPEN in settings: someone on this desktop
+  const v = deskIndex() * W, here = city.people.filter((p) => !p.aboard && !p.inCar && p.x > v && p.x < v + W);
+  const p = here[Math.floor(Math.random() * here.length)] || city.people[0];
+  if (p) openPassport(p.id);
+}
+actions.passport = openSomeone;
+// Click someone in town (only while the town is taking clicks: a panel's open) for their passport.
+let paintT = -1;
+function personAt(e) {
+  const x = e.clientX / ZOOM + deskIndex() * W, y = e.clientY / ZOOM;
+  let best = null, bd = 6;
+  for (const p of city.people) {
+    if (p.headT !== paintT || p.aboard || p.inCar) continue;
+    const feet = p.y + (p.b ? 0 : Math.round(p.depth || 0)), d = Math.abs(x - p.headX);
+    if (d < bd && y >= p.headY - 3 && y <= feet + 1) { bd = d; best = p; }
+  }
+  return best;
+}
+canvas.addEventListener('mousemove', (e) => { const p = personAt(e); setHoverPerson(p?.id ?? null); canvas.style.cursor = p ? 'pointer' : ''; });
+canvas.addEventListener('mouseleave', () => setHoverPerson(null));
+canvas.addEventListener('mousedown', (e) => { const p = personAt(e); if (p) { e.picked = true; openPassport(p.id); } });
+
 let info = null, frameIn = null, townKey = '', heard = false;
 if (LEADER) {
   setTownActions(actions);
@@ -202,9 +251,10 @@ if (LEADER) {
     if (m.type === 'hello') townKey = ''; // a follower just started: send it the whole town
     else if (m.type === 'cmd' && ['save', 'load', 'reset'].includes(m.name)) actions[m.name](m.arg);
     else if (m.type === 'cmd' && m.name === 'dev') devRun(m.arg.name, m.arg.arg);
+    else if (m.type === 'cmd' && m.name === 'card') watched.set(m.arg, performance.now());
   });
 } else {
-  setTownActions({ slot, info: () => info, save: (i) => (send({ type: 'cmd', name: 'save', arg: i }), true), load: (i) => (send({ type: 'cmd', name: 'load', arg: i }), !!slot(i)), reset: () => send({ type: 'cmd', name: 'reset' }) });
+  setTownActions({ slot, info: () => info, passport: openSomeone, save: (i) => (send({ type: 'cmd', name: 'save', arg: i }), true), load: (i) => (send({ type: 'cmd', name: 'load', arg: i }), !!slot(i)), reset: () => send({ type: 'cmd', name: 'reset' }) });
   listen((m) => {
     if (m.type === 'town') { // the buildings changed: rebuild them, keeping how see-through each one is (or every front wall would flash back for a moment)
       const seeThrough = new Map(city.lots.map((b, i) => b && [`${i}:${b.type}:${b.tier}:${b.seed}`, b.reveal]).filter(Boolean));
@@ -255,7 +305,7 @@ function step(ms, draw = true, sim = true) {
   if (g !== G || desktop.spaces > city.districts) { G = g; city.place(W, G, desktop.spaces); street = null; }
   let now = simNow();
   if (!LEADER) { // a follower: take the latest frame from the leader
-    if (frameIn) { const t0 = performance.now(); apply(city, frameIn); time('sync', t0); now = frameIn.now; info = frameIn.info; frameIn = null; if (city.districts > city.n / city.perScreen) city.place(W, G, city.districts); }
+    if (frameIn) { const t0 = performance.now(); apply(city, frameIn); time('sync', t0); now = frameIn.now; info = frameIn.info; if (frameIn.cards) Object.assign(cardsIn, frameIn.cards); frameIn = null; if (city.districts > city.n / city.perScreen) city.place(W, G, city.districts); }
   }
   const d = new Date(now), active = desktop.space * W; // the desktop you're looking at (your windows are on it)
   const dtTown = lastNow === null ? 0 : Math.max(0, Math.min(now - lastNow, 30 * 60e3)); lastNow = now;
@@ -278,6 +328,7 @@ function step(ms, draw = true, sim = true) {
     for (const b of city.lots) b?.elevator?.update(dt);
     for (const p of city.people) updatePerson(p, dt, w);
     updateSocial(city, w);
+    updateLife(city, w);
   }
   t = time('sim', t);
   const inside = new Map();
@@ -289,12 +340,13 @@ function step(ms, draw = true, sim = true) {
   if (LEADER && draw && !(slow && shown)) { // tell the other desktops' windows (all the time, unless they're all out of sight)
     const key = structureKey(city);
     if (key !== townKey) { townKey = key; send({ type: 'town', town: city.snapshot(), districts: city.districts }); }
-    send(frame(city, now, actions.info()));
+    send({ ...frame(city, now, actions.info()), cards: watched.size ? watchedCards() : undefined });
   }
   t = time('sync', t);
   if (!draw || (slow && !shown)) return;
   tickSettings();
   tickDev();
+  tickPassport(w.t);
   if (!LEADER && info?.dev) dev.speed = info.dev.speed;
   paint(ctx, { ...w, view: deskIndex() * W }, inside, true);
   time('draw', t);
@@ -352,7 +404,11 @@ function paint(c, w, inside, isLive) {
     v.draw(c, w.t, night);
     c.globalAlpha = 1;
   }
+  const marks = isLive && (passportOf() != null || interactive() || !tauri); // whose passport is open; who the mouse is on
+  if (isLive) paintT = w.t;
+  if (marks) drawMarks(c, city.people, w.t, nameFor, false);
   if (prefs.bubbles !== false) drawBubbles(c, city.people, w.t); // speech bubbles, over everything in the town
+  if (marks) drawMarks(c, city.people, w.t, nameFor, true);
   if (dev.labels) { // what everyone's doing, over their heads
     const pt = painter(c);
     for (const p of city.people) {

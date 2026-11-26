@@ -124,7 +124,7 @@ const ART = {
 };
 // Drawn once into little images (two frames for the animated ones).
 const iconCache = new Map();
-function iconImage(name, frame) {
+export function iconImage(name, frame) {
   const art = ART[name];
   if (!art) return null;
   const frames = Array.isArray(art[0]) ? art : [art], rows = frames[frame % frames.length], key = `${name}:${frame % frames.length}`;
@@ -222,7 +222,7 @@ export const isFriend = (r) => r.aff > 0.5 && r.fam >= 4;
 // ---------- topics ----------
 const INTERESTS = ['food', 'work', 'money', 'family', 'sports', 'games', 'movies', 'music', 'travel', 'shopping', 'health', 'news', 'town', 'books', 'pets', 'love'];
 const KID_INTERESTS = ['games', 'school', 'sports', 'pets', 'movies', 'food'];
-const TOPICS = {
+export const TOPICS = {
   weather: ['sun', 'rain', 'umbrella', 'sun', 'moon'], food: ['noodles', 'bao', 'pizza', 'cake', 'coffee'], work: ['work', 'laptop', 'chartup', 'chartdown', 'clock'],
   money: ['money', 'chartup', 'chartdown', 'bag'], family: ['baby', 'heart', 'house', 'person'], sports: ['ball', 'shoe', 'dumbbell', 'star'],
   games: ['gamepad', 'star', 'laptop'], movies: ['film', 'tv', 'star'], music: ['note', 'star'], travel: ['plane', 'car', 'sun'],
@@ -416,7 +416,7 @@ function tick(city, c, w) {
     say(fed, rude ? [pick(['vein', 'angry']), pick(['#BYE', '#UGH', '#NO'])] : [pick(['clock', 'sweat']), '#BYE'], { style: rude ? 'shout' : 'say', dur: 1.8, t: w.t });
     fed.talkAnim = rude ? 'hips' : 'wave';
     for (const q of c.members) if (q !== fed) { say(q, [rude ? pick(['sad', 'surprised', 'broken', 'angry']) : pick(['wave', 'smile', '#OK'])], { dur: 1.5, t: w.t + 0.7 }); q.mood = moodOf(q) - (rude ? 0.15 : 0.02); }
-    c.rude = rude;
+    c.rude = rude; c.fed = fed;
     if (c.members.length > 2) { // the rest carry on without them
       c.members = c.members.filter((q) => q !== fed); fed.convo = null; fed.talkAnim = null; fed.socialNext = w.t + 40;
       if (c.standing) fed.plan = fed.plan.filter((s) => s.convo !== c);
@@ -465,7 +465,7 @@ export function updateSocial(city, w) {
   city.convos = city.convos.filter((c) => !c.ended);
   for (const p of city.people) {
     if (!p.convo) p.talkAnim = null;
-    if (p.mood !== undefined) p.mood += (persona(p).cheerful - p.mood) * Math.min(1, w.dt / 900);
+    if (p.mood !== undefined || p.feel) p.mood = moodOf(p) + (persona(p).cheerful + (p.feel || 0) - moodOf(p)) * Math.min(1, w.dt / 900); // (p.feel: how their needs are going, see life.js)
   }
   // Look for new conversations a couple of times a second.
   if (w.t >= nextLook) { nextLook = w.t + 0.6; meet(city, w); }
@@ -565,8 +565,8 @@ function meet(city, w) {
         if (dx > 8 || (!p.b && Math.abs((p.depth || 0) - (q.depth || 0)) > 3)) continue;
         const R = rel(city, p, q);
         if (p.hh === q.hh || Math.random() > (R.fam < 2 ? 0.12 * (1 + moodOf(p) + moodOf(q)) : 0.5)) continue; // strangers now and then, if they're in a good mood
-        if ((p.greeted?.[q.id] || 0) > w.t - 120) continue;
-        (p.greeted ??= {})[q.id] = w.t; (q.greeted ??= {})[p.id] = w.t;
+        if ((p.waved?.[q.id] || 0) > w.t - 120) continue;
+        (p.waved ??= {})[q.id] = w.t; (q.waved ??= {})[p.id] = w.t; // (not p.greeted: that's the security guard's nod, see venues.js)
         const stop = isFriend(R) && walkP && walkQ && !p.b && Math.random() < 0.35 * (persona(p).talkative + persona(q).talkative);
         start(city, w, stop ? 'chat' : 'greet', [p, q], { standing: stop });
         break;
@@ -575,10 +575,12 @@ function meet(city, w) {
       const sameRoom = !p.b || p.b.roomAt(p.f, p.x) === q.b.roomAt(q.f, q.x);
       if (!sameRoom || dx > (seated(p) && seated(q) ? 22 : 12)) continue;
       const R = rel(city, p, q), place = placeOf(p);
-      const chance = 0.05 * (PLACE_CHANCE[place] ?? 1) * (0.4 + persona(p).talkative + persona(q).talkative) * (0.6 + Math.max(-0.5, R.aff)) * (R.fam ? 1.3 : 0.7);
+      const lonely = 2 - Math.min(p.needs?.[3] ?? 1, q.needs?.[3] ?? 1); // (needs[3]: social, see life.js)
+      const chance = 0.05 * lonely * (PLACE_CHANCE[place] ?? 1) * (0.4 + persona(p).talkative + persona(q).talkative) * (0.6 + Math.max(-0.5, R.aff)) * (R.fam ? 1.3 : 0.7);
       if (Math.random() > chance) continue;
       // Who else? Gossip about a third person they both know, an argument if they don't get on.
       const third = free.find((o) => o !== p && o !== q && !o.convo && o.b === p.b && o.f === p.f && Math.abs(o.x - p.x) < 40 && Math.abs(o.x - p.x) > 12 && rel(city, p, o).fam > 1 && rel(city, q, o).fam > 1);
+      if (R.aff < -0.25 && Math.random() < 0.65) continue; // people who don't get on mostly keep out of each other's way
       const kind = R.aff < -0.25 || (traits(p).temper && moodOf(p) < -0.3 && Math.random() < 0.4) ? 'argue' : third && Math.random() < 0.18 && !p.kid ? 'gossip' : 'chat';
       const c = start(city, w, kind, [p, q], { place, about: third || null });
       // Friends and housemates nearby join in.
@@ -608,6 +610,12 @@ function thoughts(city, w) {
   if (key === 'bedtime') options.push(['bed']);
   if (d === 4 && h > 15) options.push(['party'], ['calendar', 'smile']);
   if (d === 0 && h < 10) options.push(['calendar', 'sad'], ['coffee', 'tired']);
+  const n = p.needs || []; // [energy, food, fun, social, hygiene] (see life.js): whatever's running low comes to mind
+  if (n[0] < 0.25) options.push(['tired'], ['zzz'], ['bed', 'question']);
+  if (n[1] < 0.25) options.push(['plate', 'question'], ['noodles'], ['pizza'], ['bao']);
+  if (n[2] < 0.2) options.push(['annoyed'], ['tv', 'question'], ['gamepad']);
+  if (n[3] < 0.2) options.push(['person', 'question'], ['phone'], ['sad']);
+  if (n[4] < 0.2) options.push(['sweat'], ['sweat', 'question']);
   if (m > 0.4) options.push(['smile'], ['note'], ['heart']);
   if (m < -0.35) options.push(['sad'], ['annoyed'], ['broken']);
   if (!options.length) options.push(['note'], [pick(TOPICS[pick(interestsOf(p))] || ['smile'])]);

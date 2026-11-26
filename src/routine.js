@@ -121,6 +121,9 @@ export function dayPlan(p, d, city) {
   return blocks;
 }
 
+// Any day's plan, without disturbing the cached one (the passport's calendar looks ahead).
+export const planFor = (p, d, city) => (p._plan?.key.startsWith(`${d}|`) ? p._plan.blocks : buildDay(p, d, city));
+
 function buildDay(p, d, city) {
   const T = traits(p), H = homeTraits(p.hh), R = dice(p.seed, d, 2), HR = dice(p.hh, d, 3), we = isWeekend(d), wd = dow(d);
   const out = [], add = (from, to, kind, extra) => { if (to - from > 0.03) out.push({ from, to, kind, ...extra }); };

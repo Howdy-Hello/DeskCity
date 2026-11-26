@@ -126,6 +126,7 @@ function runTask(p, s, t, dt, w, h) {
   p.tool = t.tool || null;
   if (w.t - t.t0 < t.dur) return false;
   p.hip = null; if (!t.keep) p.spot = null;
+  if (p.life && anims.some((a) => a !== 'stand')) for (const a of new Set(anims)) p.life.done[a] = (p.life.done[a] || 0) + 1; // today's work, for the passport
   t.then?.();
   return true;
 }

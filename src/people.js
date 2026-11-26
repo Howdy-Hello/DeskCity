@@ -28,6 +28,7 @@ const FALLBACK = { eat: ['eat', 'tv', 'rest'], lunch: ['lunch', 'eat', 'coffee']
 export function makePerson(d) {
   return {
     id: d.id, seed: d.seed, jitter: d.jitter, home: d.home, job: d.job ?? null, hh: d.hh ?? d.id, kid: !!d.kid,
+    kin: d.kin, born: d.born, since: d.since, needs: d.needs && [...d.needs], // household kind, birthday, day they moved in, needs (see life.js)
     jail: d.jail || 0, anger: d.anger || 0, sick: d.sick || null, lane: d.seed % 3, depth: 0, v: 0,
     x: 0, y: 0, b: null, f: 0, surface: 'ground', dir: 1, vx: 0, vy: 0, win: null, winX: 0, side: 0,
     pose: newPose(), phase: d.seed % 7, anim: 'stand', hip: null, spot: null,
@@ -215,7 +216,11 @@ function floorSpot(p, b, unit, act) {
       return { act, x: gx, f: room.f, hip: 2, dir: gx < room.x + room.w / 2 ? 1 : -1, room: room.id, unit, item: null, floor: true, anim: act === 'eat' ? 'floorEat' : 'phone' };
     }
   }
-  return null;
+  // Every room's packed: squeeze in somewhere (rather than go and stand in the street at dinner time).
+  const room = rooms[0];
+  if (!room) return null;
+  const gx = Math.round(room.x + room.w * (0.3 + 0.4 * ((p.seed % 7) / 6)));
+  return { act, x: gx, f: room.f, hip: 2, dir: gx < room.x + room.w / 2 ? 1 : -1, room: room.id, unit, item: null, floor: true, anim: act === 'eat' ? 'floorEat' : 'phone' };
 }
 
 function activityPlan(p, wn, w) {
