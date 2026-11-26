@@ -140,8 +140,9 @@ function paintBeams(ctx, b, w, light, src, s, dusts) {
     }
     // Front windows (in the wall that's cut away): a patch of light on the back wall, and the floor.
     if (r.w < 16) continue;
-    const glass = L.T.facade === 'glass';
-    const [fx, fy, fw, fh] = glass ? [rx + 1, y - 25, r.w - 2, 24] : [b.x0 + Math.round(r.x + r.w / 2 - 5), y - 20, 10, 10];
+    const glass = L.glass, front = L.wins.get(r.id)?.[0];
+    if (!front) continue;
+    const [fx, fy, fw, fh] = [b.x0 + front[0], y + front[1], front[2], front[3]];
     if (shut(r) || shadedAt(w.city, b, src, fx + fw / 2, fy + fh / 2)) continue;
     const d = towards(src, fx + fw / 2, fy + fh / 2), depth = 9, px = fx + d.dx * depth, py = fy + d.dy * depth;
     clipRoom(rx, r.w, y);

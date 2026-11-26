@@ -8,6 +8,7 @@ import { drawScreen, TV_CHANNELS, PC_APPS } from './screens.js';
 import { FURNITURE, ROOMS, FLATPACK, BOX, furnish, decorate, drawPiece, drawDetail } from './furniture.js';
 import { drawBeams, drawFacadeLight } from './sunlight.js';
 import { nightLevel } from './sky.js';
+import { styleOf, windowRects, palette, paintFacade, paintDoor, paintRoof, ROOFS_H, roomLook, paintRoomWall, paintLamp, brickWall } from './styles.js';
 
 export const FLOOR_H = 30; // one storey; a stick person is ~19 cells tall
 export const LOT_W = 200;  // width of each building plot along the bottom of the screen
@@ -23,7 +24,7 @@ const MIN_W = {
 // cafe or pub on the ground floor of a mixed-use block.
 const SHARED = new Set(['lobby', 'fitness', 'store', 'cafe', 'pub', 'diner', 'restkitchen']);
 export const isVenue = (r) => !!ROOMS[r.kind]?.venue;
-const ROOF_H = { pitched: 18, flat: 5, tower: 14, sawtooth: 26 };
+const ROOF_H = { pitched: 18, flat: 5, tower: 14, sawtooth: 26, ...ROOFS_H };
 const times = (n, f) => Array.from({ length: n }, (_, i) => f(i));
 const baseKind = (name) => name.split(':')[0];
 const widthOf = (rooms) => rooms.reduce((s, n) => s + MIN_W[baseKind(n)], 0) + (rooms.length - 1) * WALL;
@@ -93,23 +94,24 @@ export const TYPES = {
     { name: 'House', w: 176, roof: 'pitched', facade: 'siding', units: 'whole', n: 2, core: ['stairs'],
       floors: (r, sp) => [household(r, sp, ['kitchen'], { extras: [['living', 0.95], ['study', 0.3], ['gym', 0.07], ['greenhouse', 0.08]] }),
         household(r, sp, ['bedroom', 'washroom'], { extras: [['bedroom:spare', 0.65], ['study', 0.3], ['gym', 0.05]] })] },
+    // (T.flats: how many floors of flats over the lobby; a design can change it, see styles.js.)
     { name: 'Apartments', w: 176, roof: 'flat', facade: 'brick', units: 'floor', n: 5, core: ['stairs'], balconies: 0.4,
-      floors: (r, sp) => [groundFloor(r), ...times(4, () => household(r, sp, ['bedroom', 'kitchen', 'washroom']))] },
+      floors: (r, sp, o, T) => [groundFloor(r), ...times(T.flats ?? 4, () => household(r, sp, ['bedroom', 'kitchen', 'washroom']))] },
     { name: 'Condo Tower', w: 176, roof: 'tower', facade: 'panel', units: 'floor', sold: true, n: 11, core: ['elevator'], balconies: 0.4,
-      floors: (r, sp) => { // about 4 in 10 give one floor over to a gym for the residents
-        const fl = [groundFloor(r), ...times(10, () => household(r, sp, ['bedroom', 'kitchen', 'washroom']))];
-        if (r() < 0.4) fl[2 + Math.floor(r() * 8)] = ['fitness'];
+      floors: (r, sp, o, T) => { // about 4 in 10 give the floor above the lobby over to a gym for the residents
+        const fl = [groundFloor(r), ...times(T.flats ?? 10, () => household(r, sp, ['bedroom', 'kitchen', 'washroom']))];
+        if (r() < 0.4) fl[1] = ['fitness'];
         return fl;
       } },
     // The biggest town's homes: 15 floors of condos over a lobby, a gym floor, only where the screen is tall enough.
     { name: 'Residential Tower', w: 184, roof: 'tower', facade: 'panel', units: 'floor', sold: true, n: 16, core: ['elevator'], balconies: 0.5,
-      floors: (r, sp) => { const fl = [groundFloor(r), ...times(15, () => household(r, sp, ['bedroom', 'kitchen', 'washroom']))]; fl[3 + Math.floor(r() * 10)] = ['fitness']; return fl; } },
+      floors: (r, sp, o, T) => { const fl = [groundFloor(r), ...times(T.flats ?? 15, () => household(r, sp, ['bedroom', 'kitchen', 'washroom']))]; fl[1] = ['fitness']; return fl; } },
   ],
   office: [
     { name: 'Small Office', w: 160, roof: 'flat', facade: 'stucco', companies: 1, floors: () => [['common', 'desks', 'washroom:office']] },
     { name: 'Office', w: 184, roof: 'flat', facade: 'stucco', core: ['stairs'], companies: 1, n: 3,
       floors: () => [['reception', 'common', 'washroom:office'], ['desks', 'meeting'], ['boss', 'hr', 'desks']] },
-    { name: 'Office Tower', w: 192, roof: 'tower', facade: 'glass', core: ['elevator'], n: 12, floors: (r, sp, opts) => officeTower(r, 12, opts.hq) },
+    { name: 'Office Tower', w: 192, roof: 'tower', facade: 'glass', core: ['elevator'], n: 12, floors: (r, sp, opts, T) => officeTower(r, T.n, opts.hq) },
   ],
   // Chapter 2. Each of these comes in one size.
   restaurant: [{ name: 'Restaurant', w: 184, roof: 'flat', facade: 'shop', signs: ['NOODLES', 'DUMPLINGS', 'HOTPOT', 'BISTRO', 'GRILL', 'PIZZA', 'TACOS', 'SUSHI', 'DINER'], floors: () => [['diner', 'restkitchen', 'washroom']] }],
@@ -127,13 +129,20 @@ export const TYPES = {
 
 // ---------- layout: rooms, furniture, details and spots ----------
 // opts.plan: a saved room plan to rebuild exactly (so code changes never reshuffle an existing town).
+// The size's own settings with its design's on top (opts.style, or the saved plan's).
+export function typeOf(type, tier, style) { const S = styleOf(type, tier, style); return S?.facade ? { ...TYPES[type][tier], ...S, name: S.name } : TYPES[type][tier]; }
+// How tall it stands, in cells, with its roof.
+export const heightOf = (type, tier, style) => { const T = typeOf(type, tier, style); return (T.n ?? 1) * FLOOR_H + ROOF_H[T.roof]; };
+
 export function layout(type, tier, seed, opts = {}) {
-  const T = TYPES[type][tier], r = rng(seed), rf = rng(seed ^ 0x5bd1e995); // r: the plan; rf: furniture
+  const design = opts.plan ? opts.plan.style : opts.style, T = typeOf(type, tier, design), S = T === TYPES[type][tier] ? null : T;
+  const r = rng(seed), rf = rng(seed ^ 0x5bd1e995); // r: the plan; rf: furniture
   const core = T.core || [];
   const coreW = core.reduce((s, k) => s + CORE_W[k], 0);
   const inner = T.w - 2 * WALL - (coreW ? coreW + WALL : 0);
-  let plan = opts.plan ? JSON.parse(JSON.stringify(opts.plan)) : T.floors(r, inner, opts);
+  let plan = opts.plan ? JSON.parse(JSON.stringify(opts.plan)) : T.floors(r, inner, opts, T);
   if (Array.isArray(plan)) plan = { floors: plan, owner: [], companies: T.companies ? [{ name: companyName(r), color: BRAND_COLORS[Math.floor(r() * BRAND_COLORS.length)], floors: plan.map((_, f) => f) }] : [] };
+  if (design && !opts.plan) plan.style = design;
   if (T.companies && !opts.plan) plan.owner = plan.floors.map(() => 0);
   // Office washrooms go at the far end of the floor from the stairs / lift (on the ground floor,
   // just past the entrance room). Applied to saved plans too, so existing offices get it.
@@ -145,7 +154,7 @@ export function layout(type, tier, seed, opts = {}) {
   if (plan.sign === undefined && T.signs) plan.sign = pick(r, T.signs);
   const n = plan.floors.length, roofH = ROOF_H[T.roof], H = n * FLOOR_H + roofH;
   const ox = plan.ox;
-  const L = { T, plan, w: T.w, ox, n, H, roofH, feet: (f) => H - 1 - f * FLOOR_H, rooms: [], items: [], details: [], spots: [], door: WALL + 7, companies: plan.companies, hq: !!opts.hq, sign: plan.sign || T.sign };
+  const L = { T, S, seed, plan, w: T.w, ox, n, H, roofH, feet: (f) => H - 1 - f * FLOOR_H, rooms: [], items: [], details: [], spots: [], door: WALL + 7, companies: plan.companies, hq: !!opts.hq, sign: plan.sign || T.sign };
 
   // Older saves recorded their furniture by its position in the list; the lobbies now have different
   // furniture, so note how everything after each lobby moved (applied on loading, see city.js).
@@ -217,8 +226,9 @@ export function layout(type, tier, seed, opts = {}) {
   L.entrances = [L.door];
   const shopFront = type === 'home' && L.rooms.find((rm) => rm.f === 0 && isVenue(rm));
   if (shopFront) { const lobbyRoom = L.rooms.find((rm) => rm.f === 0 && rm.kind === 'lobby'); if (lobbyRoom) { L.door = lobbyRoom.x + 7; L.entrances = [L.door, WALL + 7]; L.shopFront = shopFront.id; } }
-  L.glass = T.facade === 'glass';
+  L.glass = T.facade === 'glass' || !!T.glass;
   L.bay = L.rooms.find((rm) => rm.kind === 'firebay') || null;
+  L.pal = S ? palette(L, seed) : null;
 
   let cx = T.w - WALL - coreW;
   if (core.includes('stairs')) { L.stairs = { x: cx, w: CORE_W.stairs }; cx += CORE_W.stairs; }
@@ -244,6 +254,9 @@ export function layout(type, tier, seed, opts = {}) {
     const right = L.rooms.find((rm) => rm.f === f && rm.x + rm.w === rx && !rm.outdoor);
     if (right) L.sideWindows.push({ f, side: 1, x: rx, area: { x: right.x, w: right.w } });
   }
+  // Each room's windows (lit at night, and drawn outside on buildings with a design).
+  L.wins = new Map();
+  for (const room of L.rooms) if (!room.outdoor && T.facade !== 'shop' && (L.glass || room.w >= 16)) L.wins.set(room.id, windowRects(L, room));
   return L;
 }
 
@@ -262,16 +275,18 @@ function bakeInterior(L, seed) {
     const y = feet(f);
     if (f > 0) p.rect(0, y + 1, w, 2, SLAB);
     for (const room of L.rooms.filter((rm) => rm.f === f)) {
-      const R = ROOMS[room.kind];
+      const R = ROOMS[room.kind], look = roomLook(L, room); // (the building's design decides its rooms' walls, floors and lights)
       if (room.outdoor) { openAir(p, room, y); continue; }
-      p.rect(room.x, y - 27, room.w, 28, R.wall);
+      if (look) paintRoomWall(p, room, y, look);
+      else p.rect(room.x, y - 27, room.w, 28, R.wall);
       if (R.tiles) for (let k = y - 25; k < y; k += 4) p.rect(room.x, k, room.w, 1, shade(R.wall, 0.94));
       if (L.glass) glassWall(p, room, y);
-      p.rect(room.x, y - 1, room.w, 2, shade(R.wall, 0.8)); // skirting board
-      if (f > 0) p.rect(room.x, y + 1, room.w, 1, R.floor);
+      p.rect(room.x, y - 1, room.w, 2, look?.finish === 'panel' ? shade(look.wood, 0.7) : shade(look && look.finish !== 'brick' && look.finish !== 'concrete' ? look.wall : R.wall, 0.8)); // skirting board
+      if (f > 0) p.rect(room.x, y + 1, room.w, 1, look?.floor || R.floor);
       if (room.x > WALL) doorway(p, room.x - WALL, y); // layer 3: doorway into the room on the left
       // ceiling lamp
       const mid = Math.round(room.x + room.w / 2);
+      if (look && paintLamp(p, room, y, look)) continue;
       if (['desks', 'meeting', 'common', 'store', 'reception', 'hr', 'lounge', 'classroom', 'restkitchen', 'firebay', 'precinct', 'policefront', 'cells', 'factoryfloor', 'fitness', 'er', 'ward'].includes(room.kind)) p.rect(mid - 5, y - 27, 11, 1, '#fbfbe8');
       else if (room.kind === 'lobby' && room.variant === 'condo') { // a chandelier
         p.rect(mid, y - 27, 1, 3, '#c9a227'); p.rect(mid - 4, y - 24, 9, 1, '#c9a227');
@@ -432,21 +447,7 @@ function drawShaft(p, L) {
 
 // ---------- layer 1: the outside ----------
 // Outside looks. Each building picks its colours and extras from its own seed, so neighbours differ
-// but a building always looks the same.
-// Brick in a running bond: courses 3 cells tall (2 of brick, 1 of mortar), bricks 6 long, each
-// course offset by half a brick; the mortar is a soft mix of the two colours so it reads as texture
-// rather than a grid, and each brick is a shade lighter or darker than its neighbours.
-const hexMix = (a, b, k) => '#' + [1, 3, 5].map((i) => Math.round(parseInt(a.slice(i, i + 2), 16) * (1 - k) + parseInt(b.slice(i, i + 2), 16) * k).toString(16).padStart(2, '0')).join('');
-function brickWall(p, x0, y0, w, h, brick, mortar) {
-  p.rect(x0, y0, w, h, hexMix(brick, mortar, 0.45));
-  for (let row = 0, y = y0; y < y0 + h; row++, y += 3) {
-    for (let x = x0 - (row % 2 ? 3 : 0); x < x0 + w; x += 6) {
-      const n = ((Math.imul(x + 1013, 73856093) ^ Math.imul(row + 7, 19349663)) >>> 0) % 100, a = Math.max(x, x0), b = Math.min(x + 5, x0 + w);
-      if (b > a) p.rect(a, y + 1, b - a, Math.min(2, y0 + h - y - 1), shade(brick, 0.9 + n / 500 + (n % 7 === 0 ? -0.06 : 0)));
-    }
-  }
-}
-
+// but a building always looks the same. (Buildings with a design are drawn by styles.js.)
 const FACADE = {
   siding(p, L, r) {
     const c = pick(r, ['#e9d8b4', '#cfe0e8', '#e8c9b9', '#d6e3c3', '#f0e6d0', '#c9d3e6', '#f2d7a6', '#dcc7e0', '#e0e0d8']);
@@ -484,6 +485,15 @@ const FACADE = {
 function bakeExterior(L, seed) {
   const cv = sprite(L.w + L.ox, L.H), p = painter(cv), r = rng(seed + 7), T = L.T;
   p.ctx.translate(L.ox, 0);
+  if (L.S) { // a building with a design: walls, windows and door from styles.js
+    paintFacade(p, L, r);
+    for (const room of L.rooms) if (room.outdoor) openAir(p, room, L.feet(room.f));
+    if (L.shopFront != null) storefront(p, L.rooms[L.shopFront], L.feet(0), r);
+    paintDoor(p, L, L.feet(0));
+    drawRoof(p, L, rng(seed));
+    addGrain(cv);
+    return cv;
+  }
   FACADE[T.facade]?.(p, L, r);
   const curtain = pick(r, ['#c0504d', '#4f81bd', '#7aa63f', '#e8833a', '#8064a2']);
   const frame = pick(r, ['#f5f2ec', '#f5f2ec', '#3d4f61', '#6e4423']);
@@ -620,6 +630,7 @@ const EXTRA_FACADE = {
 
 function drawRoof(p, L, r) {
   const { w, roofH } = L, kind = L.T.roof;
+  if (ROOFS_H[kind] && kind !== 'steep') return paintRoof(p, L, r); // the designs' roofs (a steep roof is a taller pitched one)
   if (kind === 'sawtooth') { // a factory's sawtooth roof and two tall chimneys
     const base = roofH - 1;
     for (let x = 0; x < w; x++) { const k = x % 24, h = Math.round(k < 18 ? (k / 18) * 8 : 8 - ((k - 18) / 6) * 8); p.rect(x, base - h, 1, h + 1, k < 18 ? '#7d858c' : '#bcd6e3'); }
@@ -631,8 +642,8 @@ function drawRoof(p, L, r) {
     }
     return;
   }
-  if (kind === 'pitched') {
-    const shingle = pick(r, ['#8e3b2f', '#4d5b6a', '#6b4a3a', '#3f6b4f', '#5b3f66', '#3b4a5a', '#7a5c3a']);
+  if (kind === 'pitched' || kind === 'steep') {
+    const shingle = L.pal?.roof || pick(r, ['#8e3b2f', '#4d5b6a', '#6b4a3a', '#3f6b4f', '#5b3f66', '#3b4a5a', '#7a5c3a']);
     const cx = Math.round(w * (r() < 0.5 ? 0.28 : 0.68)); // chimney on the left or the right
     p.rect(cx, 3, 6, roofH, pick(r, ['#9c4a35', '#7d756b', '#b0705a'])); p.rect(cx - 1, 2, 8, 2, '#6f6f6f');
     for (let i = 0; i < roofH + 2; i++) {
@@ -1053,35 +1064,38 @@ export class Building {
   drawWindowLight(ctx, people, w, alpha) {
     const n = nightLevel(w.hour);
     if (alpha <= 0.02) return;
-    const L = this.L, glass = L.T.facade === 'glass';
+    const L = this.L, glass = L.glass;
     for (const r of L.rooms) {
-      if (r.outdoor || (L.T.facade === 'shop') || (!glass && r.w < 16)) continue;
+      const rects = L.wins.get(r.id);
+      if (!rects) continue;
       const lit = this.isLit(r, people, w), y = this.feetY(r.f), shut = this.curtainsShut(r);
-      const [x, top, ww, hh] = glass ? [this.x0 + r.x + 1, y - 25, r.w - 2, 24] : [this.x0 + Math.round(r.x + r.w / 2 - 5), y - 20, 10, 10];
-      ctx.globalAlpha = alpha;
-      if (shut && !glass) { // curtains drawn: the fabric shows, glowing softly if the light's on behind it
-        const cloth = this.L.details.find((d) => d.kind === 'window' && d.f === r.f && d.x >= r.x && d.x < r.x + r.w)?.color || '#c0504d';
-        ctx.fillStyle = cloth; ctx.fillRect(x, top, ww, hh);
-        ctx.fillStyle = 'rgba(0,0,0,0.18)'; for (let k = x + 2; k < x + ww; k += 3) ctx.fillRect(k, top, 1, hh); // folds
-        if (n > 0) ctx.fillStyle = lit ? `rgba(255,200,110,${0.35 * n})` : `rgba(8,12,30,${0.45 * n})`, ctx.fillRect(x, top, ww, hh);
-        ctx.globalAlpha = 1;
-        continue;
-      }
-      if (n <= 0) { ctx.globalAlpha = 1; continue; }
-      const dim = lit && this.light.get(r) === 'dim' ? 0.55 : 1;
-      if (!lit && r.tv && people.some((p) => p.spot?.room === r.id && p.anim === 'tv')) { // the TV flickering in a dark window
-        ctx.fillStyle = `rgba(110,150,255,${(0.35 + 0.15 * Math.sin(w.t * 7)) * n})`; ctx.fillRect(x, top, ww, hh); ctx.globalAlpha = 1; continue;
-      }
-      if (lit) {
-        ctx.globalAlpha = alpha * dim;
-        ctx.fillStyle = `rgba(255,214,130,${0.85 * n})`; ctx.fillRect(x, top, ww, hh);
-        if (!w.potato) { // glow round the window
-          ctx.fillStyle = `rgba(255,200,110,${0.2 * n})`; ctx.fillRect(x - 2, top - 2, ww + 4, hh + 4);
-          ctx.fillStyle = `rgba(255,200,110,${0.08 * n})`; ctx.fillRect(x - 5, top - 5, ww + 10, hh + 10);
+      for (const [lx, t, ww, hh] of rects) {
+        const x = this.x0 + lx, top = y + t;
+        ctx.globalAlpha = alpha;
+        if (shut && !glass) { // curtains drawn: the fabric shows, glowing softly if the light's on behind it
+          const cloth = this.L.details.find((d) => d.kind === 'window' && d.f === r.f && d.x >= r.x && d.x < r.x + r.w)?.color || '#c0504d';
+          ctx.fillStyle = cloth; ctx.fillRect(x, top, ww, hh);
+          ctx.fillStyle = 'rgba(0,0,0,0.18)'; for (let k = x + 2; k < x + ww; k += 3) ctx.fillRect(k, top, 1, hh); // folds
+          if (n > 0) ctx.fillStyle = lit ? `rgba(255,200,110,${0.35 * n})` : `rgba(8,12,30,${0.45 * n})`, ctx.fillRect(x, top, ww, hh);
+          ctx.globalAlpha = 1;
+          continue;
         }
-        if (r.f === 0) { ctx.fillStyle = `rgba(255,205,120,${0.16 * n})`; ctx.fillRect(x - 4, this.G + 1, ww + 8, 3); } // light on the pavement
-      } else { ctx.fillStyle = `rgba(8,12,30,${0.45 * n})`; ctx.fillRect(x, top, ww, hh); }
-      ctx.globalAlpha = 1;
+        if (n <= 0) { ctx.globalAlpha = 1; continue; }
+        const dim = lit && this.light.get(r) === 'dim' ? 0.55 : 1;
+        if (!lit && r.tv && people.some((p) => p.spot?.room === r.id && p.anim === 'tv')) { // the TV flickering in a dark window
+          ctx.fillStyle = `rgba(110,150,255,${(0.35 + 0.15 * Math.sin(w.t * 7)) * n})`; ctx.fillRect(x, top, ww, hh); ctx.globalAlpha = 1; continue;
+        }
+        if (lit) {
+          ctx.globalAlpha = alpha * dim;
+          ctx.fillStyle = `rgba(255,214,130,${0.85 * n})`; ctx.fillRect(x, top, ww, hh);
+          if (!w.potato) { // glow round the window
+            ctx.fillStyle = `rgba(255,200,110,${0.2 * n})`; ctx.fillRect(x - 2, top - 2, ww + 4, hh + 4);
+            ctx.fillStyle = `rgba(255,200,110,${0.08 * n})`; ctx.fillRect(x - 5, top - 5, ww + 10, hh + 10);
+          }
+          if (r.f === 0) { ctx.fillStyle = `rgba(255,205,120,${0.16 * n})`; ctx.fillRect(x - 4, this.G + 1, ww + 8, 3); } // light on the pavement
+        } else { ctx.fillStyle = `rgba(8,12,30,${0.45 * n})`; ctx.fillRect(x, top, ww, hh); }
+        ctx.globalAlpha = 1;
+      }
     }
   }
 

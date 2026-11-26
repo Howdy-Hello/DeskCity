@@ -48,10 +48,38 @@ Animations: walk (knees and elbows bend), stairs, idle breathing, idle fidgets (
 
 | Type | Tiers (floors) | Holds || Type | Tiers (floors) | Holds |
 |---|---|---|
-| Home | Cottage (1) → House (2, stairs) → Apartments (5, stairs) → Condo Tower (11, elevator) → Residential Tower (16, elevator; only where the screen is tall enough) | 2 → 3 → 8 → 20 → 30 people |
-| Office | Small Office (1) → Office (3, stairs) → Office Tower (12, elevator) | 3 → 8 → 42 desks |
+| Home | Cottage (1) → House (2, stairs) → Apartments (3–6, stairs) → Condo Tower (10–12, elevator) → Residential Tower (13–16, elevator) | 2 → 3 → 5–13 → 23–28 → 28–36 beds (on average, by design) |
+| Office | Small Office (1) → Office (3, stairs) → Office Tower (11–13, elevator) | 3 → 8 → 43–54 desks (on average, by design) |
 | Shop | Corner Store → Supermarket | — |
 | Restaurant, Pub, School, Fire Station, Police Station, Hospital, Factory | one size each (see Buildings 2) | |
+
+### Downtown, midtown and the suburbs (see the zones in `src/city.js`)
+
+The town grows out from its **centre**, the plot it was founded on in the middle of the first desktop.
+- **Zones.** Downtown is a band of plots either side of the centre, then midtown, then the suburbs. The bands widen as the population passes 20, 45 and 80, and again whenever every plot is built up as far as it may go and people still want homes (at most once every six hours). Downtown never leaves the first desktop; past it, midtown creeps outwards a plot at a time, so further desktops stay mostly houses until the town really needs the room.
+- **Each plot has a character**, from where its own random number ranks among its desktop's plots: downtown, 2 in 5 may go **tall** (the lowest-ranked as tall as the screen allows, the rest condo height) and the rest stay **mid-rise**; midtown has the odd tall plot and some low ones; the suburbs the odd mid-rise one. The old town at the centre stays **low**, the first shop's plot mid-rise and the first office's plot tall. So the skyline is jagged, towers beside walk-ups, pubs and the school, rather than one peak in the middle.
+- **What a plot may hold.** Tall downtown: residential towers, office towers. Tall elsewhere: condo towers. Mid-rise: apartments and three-floor offices. Low: houses, small offices. Shops: a supermarket anywhere but a tall plot.
+- **Where things go.** The developer picks the plot first: one that may be as big as wanted and suits it, nearest the centre. Homes and offices are rebuilt bigger where they stand, so they take the plots that could one day go tall; the restaurant, pub, police and hospital keep off them; the school and the fire station go as far out as they can; the factory right at the edge of town. A house is never bought out to make room if its plot could go tall. Rebuilding starts at the centre.
+- **Families** would rather have a house with a garden in the suburbs, while there's room there; everyone else takes a flat nearer the middle.
+- **Not too tall.** Nothing goes up past about 60% of the way from the street to the top of the screen (a laptop gets 13–14 floor towers; the 16-floor residential tower needs a tall screen). Towers already standing in older towns stay.
+- Older towns keep everything they've built; their centre is the middle plot of the first desktop, and the zones apply to whatever's built from now on.
+
+### Designs (see `src/styles.js`)
+
+Each size of building comes in several designs, picked when it's built: one that suits the zone, fits under the height limit, isn't the same as the building next door, and ideally has walls unlike anything within three plots. A building keeps its design (it's in its saved room plan); buildings from before designs keep their original look.
+
+| Size | Designs (the first is the original) |
+|---|---|
+| Cottage | Cottage · Bungalow (wide, hipped roof, stone base, porch with a railing; suburbs and midtown) · Modern House (white render and timber cladding, flat roof, picture windows) · Cabin (logs crossing at the corners, steep roof, plank door with a lantern; suburbs) |
+| House | House · Townhouse (Georgian: brick, stone quoins, sash windows, pillared door with a fanlight) · Tudor House (brick downstairs, oak beams and white render upstairs, leaded windows; suburbs and midtown) · Modern House |
+| Apartments | Apartments (5) · Walk-up (3 floors, brick, fire escape, a stoop) · Riviera (6, pastel render, arched windows with shutters, terracotta roof, balconies; downtown and midtown) · Mansion Block (6, art deco: fluted pilasters, coloured spandrels, black granite ground floor, a stepped crown) |
+| Condo Tower | Condo Tower (11) · Glass Condos (12, glass between white floor slabs; downtown) · Brick Tower (10, stone bands, art-deco crown) |
+| Residential Tower | Residential Tower (16) · Fin Tower (13, tinted glass behind metal fins, a needle on top; downtown) · Banded Tower (14, ribbon windows over coloured bands) |
+| Small Office | Small Office · Studio (brick, striped awnings) · Pavilion (timber and ribbon glazing) |
+| Office | Office · Warehouse Lofts (dark brick, steel-framed windows, a faded painted sign with the company's name) · Glass Office |
+| Office Tower | Office Tower (12) · Stone Tower (11, limestone, ribbon windows, granite base, heavy cornice) · Black Tower (13, black glass and gold fins, a needle; downtown) |
+
+**Insides.** Each design has its own interior look: paint for its rooms (each picks one), a finish per kind of room, the floor and the ceiling lights. Bungalows are 70s (mustard and olive paint, wood-panelled living rooms, globe lights); modern houses white with a concrete kitchen, a bold accent wall and track lights; cabins log-walled with bare bulbs; townhouses and walk-ups have wainscoting and striped wallpaper with a chandelier in the living room; Tudor houses oak beams; the Riviera Mediterranean pastels and terracotta floors; the mansion block jewel colours with gold trim; brick towers and warehouse lofts exposed brick, concrete floors and bare bulbs; glass buildings white and pale wood; studios bright accent walls; the stone tower panelled offices and navy carpet; the black tower dark wood and slate. Original homes now get a little variety too (each room's paint, and stripes, dots or panelling now and then). Shops, cafes, washrooms and lobbies keep their own colours. In condo and residential towers the residents' gym is on the first floor, straight above the lobby.
 
 ### Buildings 1.1
 

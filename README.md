@@ -52,6 +52,7 @@ git tag v0.1.0 && git push --tags
 
 - `src/furniture.js`: every piece of furniture and wall decoration, and which rooms get what.
 - `src/buildings.js`: building types and sizes, room layouts, the three drawing layers, stairs and elevators.
+- `src/styles.js`: the designs each size of building comes in: walls, windows, doors, roofs and interior looks.
 - `src/stickman.js`: the stick figure's skeleton and all its animations.
 - `src/routine.js`: the week, everyone's habits, job shifts, and each person's plan for the day.
 - `src/people.js`: getting around (at their own pace), doing things, and climbing on your windows.
@@ -60,7 +61,7 @@ git tag v0.1.0 && git push --tags
 - `src/social.js`: speech bubbles and their pixel icons, conversations, friendships and moods.
 - `src/life.js`: names, ages and birthdays, needs, the diary, the work people get through, and the passport card.
 - `src/passport.js`: the passport panel, and picking people out in town.
-- `src/city.js`: who lives and works where, how the town grows, saving.
+- `src/city.js`: who lives and works where, how the town grows (downtown, midtown and suburbs), saving.
 - `src/settings.js`: the town clock and the settings panel.
 - `src/devpanel.js`: the developer's panel.
 - `src/main.js`: the main loop and drawing order.
