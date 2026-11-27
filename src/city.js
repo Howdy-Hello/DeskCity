@@ -115,6 +115,7 @@ export class City {
     this.pollution = 0; this.protests = 0; this.protest = null; this.factoryBan = 0;
     this.factoryMind = Math.random() < 0.6; // whether this town would ever build a factory
     this.centre = Math.floor((this.perScreen - 1) / 2); this.plotRolls = []; this.upzone = 0; this.upzoneAt = 0; // zones (see below)
+    this.open = 1; // how many desktops the town has grown onto (the rest stay empty until it needs them)
     if (saved) this.restore(saved, now); else this.found(now);
     this.place(this.W, this.G);
     for (const p of this.people) if (p.b === undefined) { this.putBack(p, p.savedAt); delete p.savedAt; }
@@ -131,9 +132,9 @@ export class City {
 
   found(now) {
     const c = Math.floor((this.perScreen - 1) / 2);
-    this.lots[c] = new Building('home', 0, randInt());
-    this.lots[c + 1] = new Building('office', 0, randInt());
-    this.lots[c - 1] = new Building('shop', 0, randInt());
+    this.lots[c] = new Building('home', 0, randInt(), { style: this.pickStyle('home', 0, c) });
+    this.lots[c + 1] = new Building('office', 0, randInt(), { style: this.pickStyle('office', 0, c + 1) });
+    this.lots[c - 1] = new Building('shop', 0, randInt(), { style: this.pickStyle('shop', 0, c - 1) });
     this.realty.cash -= REALTY.cost.home[0] + REALTY.cost.office[0] + REALTY.cost.shop[0];
     this.nextHunter = now + REALTY.hunterEvery;
     this.moves.push({ id: this.nextMove++, b: this.lots[c], unit: 0, size: 2, hh: { kind: 'couple', adults: 2, kids: 0 }, due: now, car: false }); // the first couple drives in
@@ -251,7 +252,7 @@ export class City {
   whereIs(p) {
     if (p.inCar || p.aboard) return undefined;
     if (!p.b) return { x: Math.round(p.x), dir: p.dir };
-    const s = p.plan[0], f = p.surface === 'elev' ? Math.round(p.b.elevator.pos) : s?.t === 'stairs' && s.path ? s.to : p.f;
+    const s = p.plan[0], f = p.surface === 'elev' ? Math.round(p.b.elevator.pos) : (s?.t === 'stairs' && s.path) || (s?.t === 'exitstairs' && s.going) ? s.to : p.f;
     return { lot: this.lots.indexOf(p.b), f, x: Math.round(p.x - p.b.x0), dir: p.dir };
   }
   // Back where they were when the town was saved (their day plan picks up from there), or home if
@@ -366,7 +367,7 @@ export class City {
     const jobless = this.people.filter((p) => !p.job && !p.kid).length, hunting = this.hunters.length;
     const has = (type) => this.lots.some((b) => b?.type === type);
     if (jobless > 2 || jobs < adults - 2) {
-      const F = GROWTH.factory, free = this.lots.some((b) => !b);
+      const F = GROWTH.factory, free = this.lots.some((b, i) => !b && this.usable(i));
       if (this.factoryMind && !has('factory') && now > this.factoryBan && pop >= F.pop && jobless >= F.jobless && free && this.grow('factory', 0, now)) return;
       if (this.grow('office', GROWTH.officeTier(pop), now)) return;
       // (no room for more offices: carry on with everything else)
@@ -377,16 +378,16 @@ export class City {
       if (pop < at || has(type) || (extra && !extra(this))) continue;
       if (type === 'restaurant' && this.lots.some((b) => b?.L.rooms.some((r) => r.kind === 'cafe' || r.kind === 'diner')) && pop < 30) continue; // a cafe will do for now
       if (type === 'bar' && this.lots.some((b) => b?.L.rooms.some((r) => r.kind === 'pub'))) continue;
-      if (this.lots.some((b) => !b)) { if (this.grow(type, 0, now)) return; continue; }
+      if (this.lots.some((b, i) => !b && this.usable(i))) { if (this.grow(type, 0, now)) return; continue; }
       if (this.buyOut(now)) return; // no free plot: buy out a small house to make room
     }
     // New homes leave enough plots free for the town buildings still to come; until then homes grow upwards.
-    const coming = GROWTH.civic.filter(([type, at]) => !has(type) && pop >= at - 12).length, free = this.lots.filter((b) => !b).length; // (soon to be needed)
+    const coming = GROWTH.civic.filter(([type, at]) => !has(type) && pop >= at - 12).length, free = this.lots.filter((b, i) => !b && this.usable(i)).length; // (soon to be needed)
     const suits = this.vacant.some((v) => this.hunters.some((h) => assignBeds(v.b, v.unit, h))); // (a family needs a child's room)
     // A family would rather have a house with a garden out in the suburbs, while there's room there;
     // everyone else takes a flat nearer the middle.
-    const suburban = free > coming && this.hunters.some((h) => h.kids > 0) && this.lots.some((b, i) => !b && this.zoneOf(i) === 'suburb');
-    if (hunting && !suits && ((suburban && this.grow('home', 1, now, false, false, 'suburb')) || this.grow('home', GROWTH.homeTier(pop + hunting * 2), now, false, free <= coming) || this.redevelop(now) || this.upzoneNow(now))) return;
+    const suburban = free > coming && this.hunters.some((h) => h.kids > 0) && this.lots.some((b, i) => !b && this.usable(i) && this.zoneOf(i) === 'suburb');
+    if (hunting && !suits && ((suburban && this.grow('home', 1, now, false, false, 'suburb')) || this.grow('home', GROWTH.homeTier(pop + hunting * 2), now, false, free <= coming) || this.redevelop(now) || this.upzoneNow(now) || this.expand())) return;
     const shops = this.lots.filter((b) => b?.type === 'shop');
     if (shops.some((b) => b.tier < GROWTH.shopTier(pop))) return this.grow('shop', GROWTH.shopTier(pop), now, true);
     if (shops.length < GROWTH.shopCount(pop)) return this.grow('shop', GROWTH.shopTier(pop), now);
@@ -396,7 +397,7 @@ export class City {
   // a building the town can spare (a second shop; an office, when there are plenty of jobs without
   // it) and pull it down to build homes there. True if it did.
   redevelop(now) {
-    if (this.lots.some((b) => !b) || this.lots.some((b, i) => b?.type === 'home' && b.tier < this.capOf(i, 'home')) || this.lots.some((b) => b?.demolish)) return false;
+    if (this.lots.some((b, i) => !b && this.usable(i)) || this.lots.some((b, i) => b?.type === 'home' && b.tier < this.capOf(i, 'home')) || this.lots.some((b) => b?.demolish)) return false;
     const adults = this.people.filter((p) => !p.kid).length, jobs = this.jobSlots().length;
     const shops = this.lots.filter((b) => b?.type === 'shop' && !b.build).sort((a, c) => a.tier - c.tier);
     const offices = this.lots.filter((b) => b?.type === 'office' && !b.build).sort((a, c) => a.tier - c.tier);
@@ -444,7 +445,7 @@ export class City {
   // Upgrade the smallest building of this type if it's below the wanted size, else build on an
   // empty lot. When every lot is taken, the town builds upward: the smallest one gets a size bigger.
   // Nowhere left to grow on these desktops: every plot built on, every home as tall as it can be.
-  isFull() { return !this.lots.some((b, i) => !b || b.build || b.upgrade || b.demolish || (b.type === 'home' && b.tier < this.capOf(i, 'home'))) && !this.canUpzone() && this.hunters.length > 0 && !this.vacant.length; }
+  isFull() { return !this.lots.some((b, i) => (!b && this.usable(i)) || b?.build || b?.upgrade || b?.demolish || (b?.type === 'home' && b.tier < this.capOf(i, 'home'))) && !this.canUpzone() && this.open >= this.districts && this.hunters.length > 0 && !this.vacant.length; }
   // How much the bank will lend: the credit line, plus part of what the company's buildings cost.
   creditLimit() {
     let value = 0;
@@ -490,14 +491,23 @@ export class City {
       : type === 'shop' ? (c === 'tall' ? 0 : 1) : max;
     return Math.min(cap, max);
   }
-  canUpzone() { // (downtown can still spread over the first desktop, or midtown further out)
+  canUpzone() { // (downtown can still spread over the first desktop, or midtown further out over the desktops grown onto)
     const [d, mid] = this.rings();
-    return d < Math.max(this.centre, this.perScreen - 1 - this.centre) || mid < Math.max(this.centre, this.lots.length - 1 - this.centre);
+    return d < Math.max(this.centre, this.perScreen - 1 - this.centre) || mid < Math.max(this.centre, Math.min(this.lots.length, this.open * this.perScreen) - 1 - this.centre);
+  }
+  // Plots the town may build on: only on the desktops it has grown onto. A new desktop stays empty
+  // until everything on those is built up as far as it can go (and people still want homes); then
+  // the town spreads onto it. True if it did.
+  usable(i) { return i < this.open * this.perScreen; }
+  expand() {
+    if (this.open >= this.districts || this.lots.some((b, i) => (!b && this.usable(i)) || b?.build || b?.upgrade || b?.demolish) || this.canUpzone()) return false;
+    this.open++;
+    return true;
   }
   // People want homes and every plot is built up as far as its zone allows: the bands widen, so the
   // next plots out may build taller. At most once every six hours. True if it did.
   upzoneNow(now) {
-    if (now < this.upzoneAt || !this.canUpzone() || this.lots.some((b) => !b || b.build || b.upgrade || b.demolish)) return false;
+    if (now < this.upzoneAt || !this.canUpzone() || this.lots.some((b, i) => (!b && this.usable(i)) || b?.build || b?.upgrade || b?.demolish)) return false;
     this.upzone++; this.upzoneAt = now + 6 * HOUR;
     return true;
   }
@@ -520,7 +530,7 @@ export class City {
   // nearest the centre (the town grows outwards). The school and the fire station go as far out as
   // they can (the suburbs, when there are any), the factory right at the edge of town.
   siteFor(type, tier, zone) {
-    const free = this.order().filter((i) => !this.lots[i] && (!zone || this.zoneOf(i) === zone));
+    const free = this.order().filter((i) => !this.lots[i] && this.usable(i) && (!zone || this.zoneOf(i) === zone));
     if (!free.length) return undefined;
     const far = (i) => Math.abs(i - this.centre);
     if (type === 'factory') return free.reduce((a, b) => (far(b) > far(a) ? b : a));
@@ -536,9 +546,10 @@ export class City {
     if (!list) return undefined;
     const z = this.zoneOf(i), look = (s) => s.facade || TYPES[type][tier].facade;
     const near = (d) => [-d, d].flatMap((k) => { const b = this.lots[i + k]; return b ? [b.L.plan.style ?? STYLES[b.type]?.[b.tier]?.[0].id, b.L.T.facade] : []; });
-    let ok = list.filter((s) => (!s.zones || s.zones.includes(z)) && this.fits(type, tier, s.id));
-    if (!ok.length) ok = list.filter((s) => this.fits(type, tier, s.id));
-    if (!ok.length) ok = [list[0]];
+    const live = list.filter((s) => !s.retired); // (retired designs are no longer built)
+    let ok = live.filter((s) => (!s.zones || s.zones.includes(z)) && this.fits(type, tier, s.id));
+    if (!ok.length) ok = live.filter((s) => this.fits(type, tier, s.id));
+    if (!ok.length) ok = [live[0] || list[0]];
     const next = near(1), around = [...next, ...near(2), ...near(3)];
     const best = ok.filter((s) => !around.includes(s.id) && !around.includes(look(s))), fresh = ok.filter((s) => !next.includes(s.id));
     const from = best.length ? best : fresh.length ? fresh : ok;
@@ -640,7 +651,7 @@ export class City {
     const moves = this.moves.map((m) => ({ lot: this.lots.indexOf(m.b), unit: m.unit, size: m.size, hh: m.hh, due: m.due }));
     const realty = { cash: this.realty.cash, hunters: this.hunters, moves, nextHunter: this.nextHunter, lastDay: this.lastDay };
     const people = this.people.map((p) => ({ id: p.id, seed: p.seed, jitter: p.jitter, home: p.home, job: p.job, newcomer: p.newcomer, hh: p.hh, kid: p.kid || undefined, jail: p.jail || undefined, anger: p.anger ? Math.round(p.anger * 100) / 100 : undefined, sick: p.sick && !p.sick.ambulance ? p.sick : undefined, shoppedDay: p.shoppedDay, mood: p.mood !== undefined ? Math.round(p.mood * 100) / 100 : undefined, kin: p.kin, born: p.born, since: p.since, needs: p.needs?.map((v) => Math.round(v * 100) / 100), at: this.whereIs(p), doneKey: p.doneKey || undefined }));
-    const town = { pollution: this.pollution, protests: this.protests, protest: this.protest, factoryBan: this.factoryBan, factoryMind: this.factoryMind, centre: this.centre, plots: [...this.plotRolls], upzone: this.upzone };
+    const town = { pollution: this.pollution, protests: this.protests, protest: this.protest, factoryBan: this.factoryBan, factoryMind: this.factoryMind, centre: this.centre, plots: [...this.plotRolls], upzone: this.upzone, open: this.open };
     const cars = this.cars.map((c) => ({ owner: c.owner, kind: c.kind, paint: c.paint, park: c.park })); // a car out driving is saved as parked at home
     return { lots, people, orders, realty, cars, town, social: saveRels(this), nextId: this.nextId };
   }
@@ -703,6 +714,7 @@ export class City {
     }
     loadRels(this, s.social);
     if (s.town) Object.assign(this, { pollution: s.town.pollution || 0, protests: s.town.protests || 0, protest: s.town.protest || null, factoryBan: s.town.factoryBan || 0, factoryMind: s.town.factoryMind ?? this.factoryMind, centre: s.town.centre ?? this.centre, plotRolls: (s.town.plots || []).map((u) => u ?? undefined), upzone: s.town.upzone || 0 });
+    this.open = s.town?.open ?? Math.max(1, ...this.lots.map((b, i) => (b ? Math.floor(i / this.perScreen) + 1 : 1))); // (an older town: every desktop it's built on)
     if (s.realty) {
       Object.assign(this.realty, { cash: s.realty.cash });
       this.hunters = (s.realty.hunters || []).map((h) => (h.kind ? h : h.size === 1 ? { kind: 'single', adults: 1, kids: 0 } : { kind: 'couple', adults: 2, kids: Math.max(0, h.size - 2) }));

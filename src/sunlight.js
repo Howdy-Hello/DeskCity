@@ -116,12 +116,13 @@ function paintBeams(ctx, b, w, light, src, s, dusts) {
     const y = b.feetY(r.f), rx = b.x0 + r.x;
     // Back windows: a shaft down to the floor.
     // (A glass office's whole back wall is window.)
-    const win = L.glass ? { kind: 'glass' } : L.details.find((dd) => (dd.kind === 'window' || dd.kind === 'smallwindow') && dd.f === r.f && dd.x >= r.x && dd.x < r.x + r.w);
-    if (win) {
-      const [x0, x1, yt, yb] = win.kind === 'glass' ? [rx + 1, rx + r.w - 1, y - 26, y - 5] : [b.x0 + win.x, b.x0 + win.x + (win.kind === 'window' ? 10 : 6), y + win.top, y + win.top + (win.kind === 'window' ? 10 : 6)];
+    const wins = L.glass ? [{ kind: 'glass' }] : L.details.filter((dd) => (dd.kind === 'window' || dd.kind === 'smallwindow') && dd.f === r.f && dd.x >= r.x && dd.x < r.x + r.w);
+    for (const win of wins) { // (every window on the back wall)
+      const ww = win.w ?? (win.kind === 'window' ? 10 : 6), wh = win.h ?? ww;
+      const [x0, x1, yt, yb] = win.kind === 'glass' ? [rx + 1, rx + r.w - 1, y - 26, y - 5] : [b.x0 + win.x, b.x0 + win.x + ww, y + win.top, y + win.top + wh];
       const size = x1 - x0;
       if (!shadedAt(w.city, b, src, (x0 + x1) / 2, (yt + yb) / 2)) {
-        if (shut(r)) glowThrough(x0, yt, size, size);
+        if (shut(r)) glowThrough(x0, yt, size, yb - yt);
         else {
           const d = towards(src, (x0 + x1) / 2, (yt + yb) / 2), k = (y - yb) / d.dy, ox = d.dx * k, oy = d.dy * k;
           const frosted = win.kind === 'smallwindow' ? 0.5 : win.kind === 'glass' ? 0.6 : 1;

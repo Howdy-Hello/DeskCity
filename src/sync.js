@@ -45,7 +45,7 @@ export function frame(city, now, info) {
       progress: b.L.items.flatMap((it, i) => (it.progress ? [[i, it.progress]] : [])),
       light: b.L.rooms.flatMap((r) => (b.light.get(r) ? [r.id] : [])), dim: b.L.rooms.flatMap((r) => (b.light.get(r) === 'dim' ? [r.id] : [])), floorOn: b.floorOn,
       curtains: b.L.rooms.flatMap((r) => (b.curtains.get(r) ? [r.id] : [])),
-      doors: b.L.doors.map((d) => [d.open, d.target]),
+      doors: b.L.doors.map((d) => [d.open, d.target]), street: b.streetDoor,
       elev: b.elevator && [b.elevator.pos, b.elevator.door, b.elevator.state, b.elevator.dir],
       orders: b.orders.map((o) => [o.p, o.item, o.state, b.L.spots.indexOf(o.seat)]),
       fire: b.fire && { ...b.fire }, alarm: b.alarm, scorch: b.scorch,
@@ -101,6 +101,7 @@ export function apply(city, m) {
     b.floorOn = d.floorOn;
     b.curtains = new Map((d.curtains || []).map((id) => [b.L.rooms[id], true]).filter(([r]) => r));
     d.doors.forEach(([open, target], k) => { const door = b.L.doors[k]; if (door) { door.open = open; door.target = target; } });
+    b.streetDoor = d.street || null;
     if (d.elev && b.elevator) [b.elevator.pos, b.elevator.door, b.elevator.state, b.elevator.dir] = d.elev;
     b.orders = (d.orders || []).map(([p, item, state, seat]) => ({ p, item, state, seat: b.L.spots[seat] })).filter((o) => o.seat);
     b.fire = d.fire || null; b.alarm = d.alarm || 0; b.scorch = d.scorch || null;

@@ -660,10 +660,36 @@ FURNITURE.bunkbed.spots[1].floorAbove = true;
 
 // ---------- layer 3: wall details ----------
 // draw(p, x, y, d, r): (x, y) = top-left.
+// A window seen from inside, shaped like it is outside: a painted frame, the sky, its glazing bars
+// (by style: a sash's meeting rail, a picture window's mullions, leaded panes, a steel grid...), a
+// sill, and curtains tied back either side (not on the modern designs).
+function insideWindow(p, x, y, d) {
+  const { w, h } = d, st = d.style || 'classic', f = d.frame || C.white, gx = x + 1, gy = y + 1, gw = w - 2, gh = h - 2;
+  if (st === 'arched') { p.rect(x, y + 2, w, h - 2, f); p.rect(x + 2, y, w - 4, 2, f); p.rect(gx, gy + 2, gw, gh - 2, '#bfe3f5'); p.rect(gx + 2, gy, gw - 4, 2, '#d8effa'); }
+  else { p.rect(x, y, w, h, f); p.rect(gx, gy, gw, gh, '#bfe3f5'); p.rect(gx, gy, gw, Math.min(3, gh), '#d8effa'); }
+  const bar = (bx, by, bw, bh) => p.rect(bx, by, bw, bh, f);
+  switch (st) {
+    case 'sash': bar(gx, y + Math.round(h * 0.45), gw, 1); break;
+    case 'wide': for (const k of [Math.round(w / 3), Math.round((2 * w) / 3)]) bar(x + k, gy, 1, gh); break;
+    case 'tall': bar(gx, y + 5, gw, 1); break;
+    case 'lattice': case 'pub': for (let k = gx + 2; k < gx + gw; k += 3) bar(k, gy, 1, gh); for (let k = gy + 2; k < gy + gh; k += 3) bar(gx, k, gw, 1); break;
+    case 'steel': for (let k = gx + 4; k < gx + gw; k += 5) bar(k, gy, 1, gh); for (let k = gy + 4; k < gy + gh; k += 5) bar(gx, k, gw, 1); break;
+    case 'band': for (let k = gx + 7; k < gx + gw; k += 8) bar(k, gy, 1, gh); break;
+    case 'strip': for (let k = gx + 5; k < gx + gw; k += 7) bar(k, gy, 1, gh); break;
+    case 'box': for (const k of [Math.round(w / 3), Math.round((2 * w) / 3)]) bar(x + k, gy, 1, gh); break;
+    case 'slit': for (let k = gx + 1; k < gx + gw; k += 2) bar(k, gy, 1, gh); break;
+    default: if (w >= 8) bar(x + Math.floor(w / 2), gy, 1, gh); if (h >= 8) bar(gx, y + Math.floor(h / 2), gw, 1); // a cross
+  }
+  if (h >= 6) p.rect(x - 1, y + h, w + 2, 1, C.offwhite); // the sill
+  if (d.curtains && h >= 8) { const ch = Math.min(h, 12); p.rect(x - 2, y - 1, 2, ch, d.color); p.rect(x + w, y - 1, 2, ch, d.color); p.rect(x - 2, y - 1, w + 4, 1, C.woodDark); }
+}
+
 export const DETAILS = {
   window: {
     w: 10, h: 11,
+    // d.w / d.h / d.style: the same window as outside (buildings.js matches them); without, the original square.
     draw(p, x, y, d) {
+      if (d.w) return insideWindow(p, x, y, d);
       p.rect(x, y, 10, 10, C.white); p.rect(x + 1, y + 1, 8, 8, '#bfe3f5'); p.rect(x + 1, y + 1, 8, 3, '#d8effa');
       p.rect(x + 5, y + 1, 1, 8, C.white); p.rect(x + 1, y + 5, 8, 1, C.white); p.rect(x - 1, y + 10, 12, 1, C.offwhite);
       p.rect(x - 1, y - 1, 2, 10, d.color); p.rect(x + 9, y - 1, 2, 10, d.color); p.rect(x - 1, y - 1, 12, 1, C.woodDark);

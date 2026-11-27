@@ -11,7 +11,8 @@
 // The view options are remembered and shared by every desktop's window; everything else is done by
 // the window that runs the town (the others pass it on).
 import { sprite, painter, addGrain, textWidth } from './draw.js';
-import { interact } from './desktop.js';
+import { interact, topPanel } from './desktop.js';
+import { movable, drawGrip } from './panels.js';
 
 export const dev = { speed: 1, xray: false, labels: false, stats: false };
 try { Object.assign(dev, JSON.parse(localStorage.getItem('deskcity-dev')) || {}, { speed: 1 }); } catch {}
@@ -19,7 +20,8 @@ const saveDev = () => { try { localStorage.setItem('deskcity-dev', JSON.stringif
 addEventListener('storage', (e) => { if (e.key === 'deskcity-dev') try { Object.assign(dev, JSON.parse(e.newValue) || {}); } catch {} });
 
 const PW = 196, PH = 262;
-let S = 3; // screen points per panel pixel (smaller on a short screen)
+let S = 3; // screen points per panel pixel (smaller on a short screen; the panel can be resized)
+let win = null; // moving and resizing it (panels.js)
 const C = { frame: '#1e2a38', bg: '#e9eef2', title: '#2c3e50', ink: '#1e1e22', soft: '#6b7785', btn: '#d5dde4', on: '#9fd5b0', hover: '#f1c40f', shadow: '#aab4be', line: '#c4ced8', warn: '#e57373', white: '#ffffff' };
 let cv = null, isOpen = false, hover = null, buttons = [], shown = '', note = '', noteUntil = 0;
 let run = null, info = null, back = null; // run(name, arg) -> message; info() -> numbers; back(): to the settings panel
@@ -82,6 +84,7 @@ function draw() {
   }
   const msg = Date.now() < noteUntil ? note : 'CHANGES ARE NOT SAVED IN SLOTS';
   p.text(msg, Math.round(PW / 2 - textWidth(msg) / 2), PH - 9, msg === note ? C.ink : C.soft);
+  drawGrip(p, PW, PH, '#8d8478');
   addGrain(cv, 0.05);
   shown = key();
 }
@@ -93,14 +96,14 @@ function create() {
   cv = sprite(PW, PH);
   cv.style.cssText = `position:fixed;left:50%;top:42%;transform:translate(-50%,-50%);width:${PW * S}px;height:${PH * S}px;image-rendering:pixelated;display:none;z-index:11;filter:drop-shadow(0 6px 0 rgba(0,0,0,0.25))`;
   document.body.appendChild(cv);
-  cv.addEventListener('mousemove', (e) => { const id = hit(e)?.id ?? null; if (id !== hover) { hover = id; cv.style.cursor = id ? 'pointer' : 'default'; draw(); } });
+  win = movable(cv, { name: 'dev', w: PW, h: PH, scale: S, onScale: (s) => { S = s; }, home: () => Object.assign(cv.style, { left: '50%', top: '42%', right: '', transform: 'translate(-50%,-50%)' }) });
+  cv.addEventListener('mousemove', (e) => { const id = hit(e)?.id ?? null; cv.style.cursor = id ? 'pointer' : win.cursor(e); if (id !== hover) { hover = id; draw(); } });
   cv.addEventListener('mouseleave', () => { hover = null; draw(); });
-  cv.addEventListener('mousedown', (e) => { e.stopPropagation(); hit(e)?.act(); if (isOpen) draw(); });
-  document.addEventListener('mousedown', () => isOpen && close());
+  cv.addEventListener('mousedown', (e) => { e.stopPropagation(); const b = hit(e); if (b) b.act(); else win.grab(e); if (isOpen) draw(); });
 }
 export function openDev() {
   if (!cv) create();
-  isOpen = true; cv.style.display = 'block'; draw();
+  isOpen = true; cv.style.display = 'block'; win.apply(); draw();
   interact('dev', true);
 }
 function close() {
@@ -108,4 +111,4 @@ function close() {
   interact('dev', false);
 }
 export function tickDev() { if (isOpen && key() !== shown) draw(); }
-addEventListener('keydown', (e) => { if (e.key === 'Escape' && isOpen) close(); });
+addEventListener('keydown', (e) => { if (isOpen && !e.panelClosed && topPanel() === 'dev' && (e.key === 'Escape' || (e.metaKey && e.key.toLowerCase() === 'w'))) { e.preventDefault(); e.panelClosed = true; close(); } });

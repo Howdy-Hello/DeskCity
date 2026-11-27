@@ -3,12 +3,14 @@
 import { sprite, painter, addGrain, textWidth } from './draw.js';
 import { DAY_NAMES } from './routine.js';
 import { openDev } from './devpanel.js';
-import { interact } from './desktop.js';
+import { interact, topPanel } from './desktop.js';
+import { movable, drawGrip } from './panels.js';
 
 const KEY = 'deskcity-clock-v1';
 
 // Display preferences, remembered between launches.
-export const prefs = { sky: true, potato: false, bubbles: true }; // sky: show the sun and moon; potato: low CPU and GPU (see main.js); bubbles: people's speech bubbles
+export const prefs = { sky: true, potato: false, bubbles: true, view: 'auto' }; // sky: show the sun and moon; potato: low CPU and GPU (see main.js); bubbles: people's speech bubbles;
+// view: when buildings show their insides: 'auto' (while someone's in), 'outside', 'inside', 'hover' (the one you point at)
 try { Object.assign(prefs, JSON.parse(localStorage.getItem('deskcity-prefs')) || {}); } catch {}
 const savePrefs = () => { try { localStorage.setItem('deskcity-prefs', JSON.stringify(prefs)); } catch {} };
 // Another desktop's window changed the clock or a preference: pick it up here too.
@@ -43,12 +45,12 @@ function changeDay(step) {
 
 // ---------- the panel ----------
 let S = 3;                 // screen points per panel pixel (smaller on a short screen)
-const PW = 156, PH = 268;  // panel size in pixels
+const PW = 156, PH = 281;  // panel size in pixels
 const C = { danger: '#e57373', off: '#cfc6b8', frame: '#2c3e50', bg: '#f4ecd6', title: '#3b5b7a', ink: '#2a2a2e', soft: '#8d8478', btn: '#e3d7c3', shadow: '#b9ab94', hover: '#f1c40f', white: '#ffffff', line: '#d8ccb6' };
 const tauri = window.__TAURI__?.core;
 const KEYS = /Mac/.test(navigator.userAgent) ? 'CTRL+OPT+D' : 'CTRL+ALT+D';
 
-let cv = null, isOpen = false, hover = null, buttons = [], shown = '';
+let cv = null, win = null, isOpen = false, hover = null, buttons = [], shown = '';
 let town = null;               // save / load / reset, provided by the main loop
 let note = '', noteUntil = 0;  // a short message, e.g. SAVED
 let resetArmed = 0;            // reset needs a second click within 3 seconds
@@ -105,11 +107,18 @@ function draw() {
   button('bubbles', PW - 30, 126, 24, prefs.bubbles ? 'ON' : 'OFF', () => { prefs.bubbles = !prefs.bubbles; savePrefs(); }, prefs.bubbles ? '#9fd5b0' : C.btn);
   p.text('PASSPORTS', 6, 142, C.soft); p.text('OR CLICK SOMEONE', 46, 142, C.off); // who someone is, how they are, their week
   button('passport', PW - 30, 139, 24, 'OPEN', town?.passport && (() => { close(); town.passport(); }));
+  p.text('VIEW', 6, 155, C.soft); // when buildings show their insides
+  let vx = PW - 6;
+  for (const [id, label] of [['hover', 'HOVER'], ['inside', 'INSIDE'], ['outside', 'OUTSIDE'], ['auto', 'AUTO']]) {
+    const bw = textWidth(label) + 6; vx -= bw;
+    button(`view-${id}`, vx, 152, bw, label, () => { prefs.view = id; savePrefs(); }, (prefs.view || 'auto') === id ? '#9fd5b0' : C.btn);
+    vx -= 2;
+  }
 
-  p.rect(6, 155, PW - 12, 1, C.line);
-  p.text('SAVED TOWNS', 6, 160, C.soft);
+  p.rect(6, 168, PW - 12, 1, C.line);
+  p.text('SAVED TOWNS', 6, 173, C.soft);
   for (let i = 1; i <= 3; i++) {
-    const y = 156 + i * 13, slot = town?.slot(i);
+    const y = 169 + i * 13, slot = town?.slot(i);
     p.text(`SLOT ${i}`, 6, y + 3, C.ink);
     if (slot) {
       const t = new Date(slot.time);
@@ -119,22 +128,25 @@ function draw() {
     button(`load${i}`, PW - 26, y, 20, 'LOAD', slot && (() => { town.load(i); say(`LOADED SLOT ${i}`); }));
   }
   const armed = Date.now() < resetArmed;
-  button('reset', Math.round(PW / 2 - 44), 209, 88, armed ? 'CLICK AGAIN TO RESET' : 'START A NEW TOWN', town && (() => {
+  button('reset', Math.round(PW / 2 - 44), 222, 88, armed ? 'CLICK AGAIN TO RESET' : 'START A NEW TOWN', town && (() => {
     if (armed) { town.reset(); resetArmed = 0; say('NEW TOWN STARTED'); } else resetArmed = Date.now() + 3000;
   }), armed ? C.danger : C.btn);
 
   const info = town?.info?.();
   if (info) { // the real estate company
-    p.rect(6, 224, PW - 12, 1, C.line);
+    p.rect(6, 237, PW - 12, 1, C.line);
     const cash = money(info.cash);
-    p.text(info.name, 6, 229, C.soft); p.text(cash, PW - 6 - textWidth(cash), 229, info.cash < 0 ? '#c0392b' : C.ink);
-    p.text(`${info.free} FREE HOMES  ${info.hunting} HUNTING  ${info.people} LIVE HERE`, 6, 238, C.soft);
-    if (info.full) p.text('TOWN FULL: ADD A DESKTOP TO GROW', 6, 246, '#c0392b'); // every plot built up as far as it goes
+    p.text(info.name, 6, 242, C.soft); p.text(cash, PW - 6 - textWidth(cash), 242, info.cash < 0 ? '#c0392b' : C.ink);
+    p.text(`${info.free} FREE HOMES  ${info.hunting} HUNTING  ${info.people} LIVE HERE`, 6, 251, C.soft);
+    if (info.full) p.text('TOWN FULL: ADD A DESKTOP TO GROW', 6, 259, '#c0392b'); // every plot built up as far as it goes
+    else if (info.hidden) p.text('SOME OF IT IS ON A CLOSED DESKTOP', 6, 259, '#c0392b'); // (it carries on there, out of sight)
+    else if (info.built > 1) p.text(`BUILT ACROSS ${info.built} DESKTOPS`, 6, 259, C.soft);
   }
   const msg = Date.now() < noteUntil ? note : `${KEYS} OR ESC TO CLOSE`;
   center(msg, PH - 8, msg === note ? C.ink : C.soft);
+  drawGrip(p, PW, PH, C.soft);
   addGrain(cv, 0.07);
-  shown = `${d.getHours()}:${d.getMinutes()}|${hover}|${m}|${msg}|${armed}|${JSON.stringify(info)}|${prefs.sky}|${prefs.potato}|${prefs.bubbles}`;
+  shown = `${d.getHours()}:${d.getMinutes()}|${hover}|${m}|${msg}|${armed}|${JSON.stringify(info)}|${prefs.sky}|${prefs.potato}|${prefs.bubbles}|${prefs.view}`;
 }
 
 const hit = (e) => buttons.find((b) => { const x = e.offsetX / S, y = e.offsetY / S; return x >= b.x && x < b.x + b.w && y >= b.y && y < b.y + b.h; });
@@ -144,16 +156,17 @@ function create() {
   cv = sprite(PW, PH);
   cv.style.cssText = `position:fixed;left:50%;top:42%;transform:translate(-50%,-50%);width:${PW * S}px;height:${PH * S}px;image-rendering:pixelated;display:none;z-index:10;filter:drop-shadow(0 6px 0 rgba(0,0,0,0.25))`;
   document.body.appendChild(cv);
-  cv.addEventListener('mousemove', (e) => { const id = hit(e)?.id ?? null; if (id !== hover) { hover = id; cv.style.cursor = id ? 'pointer' : 'default'; draw(); } });
+  win = movable(cv, { name: 'settings', w: PW, h: PH, scale: S, onScale: (s) => { S = s; }, home: () => Object.assign(cv.style, { left: '50%', top: '42%', right: '', transform: 'translate(-50%,-50%)' }) });
+  cv.addEventListener('mousemove', (e) => { const id = hit(e)?.id ?? null; cv.style.cursor = id ? 'pointer' : win.cursor(e); if (id !== hover) { hover = id; draw(); } });
   cv.addEventListener('mouseleave', () => { hover = null; draw(); });
-  cv.addEventListener('mousedown', (e) => { e.stopPropagation(); hit(e)?.act(); if (isOpen) draw(); });
-  document.addEventListener('mousedown', () => isOpen && close()); // click anywhere else to close
+  cv.addEventListener('mousedown', (e) => { e.stopPropagation(); const b = hit(e); if (b) b.act(); else win.grab(e); if (isOpen) draw(); });
 }
 
 function open() {
   if (!cv) create();
   isOpen = true;
   cv.style.display = 'block';
+  win.apply();
   draw();
   interact('settings', true);
 }
@@ -172,10 +185,10 @@ export function tickSettings() {
   if (!isOpen) return;
   const d = new Date(clock.now());
   const msg = Date.now() < noteUntil ? note : `${KEYS} OR ESC TO CLOSE`;
-  if (`${d.getHours()}:${d.getMinutes()}|${hover}|${dayMinutes()}|${msg}|${Date.now() < resetArmed}|${JSON.stringify(town?.info?.())}|${prefs.sky}|${prefs.potato}|${prefs.bubbles}` !== shown) draw();
+  if (`${d.getHours()}:${d.getMinutes()}|${hover}|${dayMinutes()}|${msg}|${Date.now() < resetArmed}|${JSON.stringify(town?.info?.())}|${prefs.sky}|${prefs.potato}|${prefs.bubbles}|${prefs.view}` !== shown) draw();
 }
 
 addEventListener('keydown', (e) => {
-  if (e.key === 'Escape' && isOpen) close();
+  if (isOpen && !e.panelClosed && topPanel() === 'settings' && (e.key === 'Escape' || (e.metaKey && e.key.toLowerCase() === 'w'))) { e.preventDefault(); e.panelClosed = true; close(); } // (the X, Esc, Cmd+W or the shortcut: clicking elsewhere leaves it open)
   if (!tauri && e.ctrlKey && e.altKey && e.code === 'KeyD') toggleSettings(); // in a browser (the app uses a global shortcut)
 });

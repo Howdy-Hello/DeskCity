@@ -11,12 +11,14 @@
 //   DIARY     what they've done today, from waking up to who they argued with
 // A yellow arrow bobs over whoever's passport is open. The card it shows is made by life.js.
 import { sprite, painter, addGrain, textWidth } from './draw.js';
-import { interact } from './desktop.js';
+import { movable, drawGrip } from './panels.js';
+import { interact, topPanel } from './desktop.js';
 import { iconImage } from './social.js';
 import { ANIM, blend, newPose, drawStickman } from './stickman.js';
 
 const PW = 208, PH = 248;
-let S = 3; // screen points per panel pixel (smaller on a short screen)
+let S = 3; // screen points per panel pixel (smaller on a short screen; the panel can be resized)
+let win = null; // moving and resizing it (panels.js)
 const C = {
   cover: '#1f3a5f', page: '#f6f0e1', tab: '#e2d6bd', ink: '#2a2a2e', soft: '#8d8478', off: '#bdb3a2', line: '#ddd2bd', hover: '#f1c40f',
   white: '#ffffff', red: '#c0392b', photo: '#cfe0ea', btn: '#e3d7c3', shadow: '#b9ab94', now: '#ea4335', row: '#ede2c8', today: '#1a73e8', grid: '#e8dfcc',
@@ -103,6 +105,7 @@ function draw() {
   const tip = zones.find((z) => z.id === hover)?.foot;
   if (tip) foot = tip;
   p.text(cut(foot, PW - 8), Math.round(PW / 2 - Math.min(PW - 8, textWidth(foot)) / 2), PH - 8, tip ? C.ink : C.soft);
+  drawGrip(p, PW, PH, C.soft ?? '#8d8478');
   addGrain(cv, 0.05);
   pic.style.display = card && tab === 'id' ? 'block' : 'none';
   if (card && tab === 'id') drawPortrait(performance.now() / 1000); // (straight away, not just on the next frame)
@@ -369,10 +372,13 @@ function create() {
   pic = sprite(38, 48); pic.style.cssText = `position:absolute;left:${7 * S}px;top:${29 * S}px;width:${38 * S}px;height:${48 * S}px;image-rendering:pixelated;pointer-events:none`;
   wrap.append(cv, pic);
   document.body.appendChild(wrap);
-  cv.addEventListener('mousemove', (e) => { const id = hit(e)?.id ?? null; if (id !== hover) { hover = id; cv.style.cursor = zones.find((z) => z.id === id)?.act ? 'pointer' : 'default'; draw(); } });
+  win = movable(wrap, { name: 'passport', w: PW, h: PH, scale: S, home: () => Object.assign(wrap.style, { top: '46%', transform: 'translateY(-50%)' }), onScale: (s) => {
+    S = s; cv.style.width = `${PW * s}px`; cv.style.height = `${PH * s}px`;
+    Object.assign(pic.style, { left: `${7 * s}px`, top: `${29 * s}px`, width: `${38 * s}px`, height: `${48 * s}px` });
+  } });
+  cv.addEventListener('mousemove', (e) => { const id = hit(e)?.id ?? null; cv.style.cursor = zones.find((z) => z.id === id)?.act ? 'pointer' : win.cursor(e); if (id !== hover) { hover = id; draw(); } });
   cv.addEventListener('mouseleave', () => { hover = null; draw(); });
-  cv.addEventListener('mousedown', (e) => { e.stopPropagation(); const z = hit(e); if (z?.act) { z.act(); if (isOpen) draw(); } });
-  document.addEventListener('mousedown', (e) => { if (isOpen && !e.picked) close(); }); // click anywhere else (but on someone) to close
+  cv.addEventListener('mousedown', (e) => { e.stopPropagation(); const z = hit(e); if (z?.act) { z.act(); if (isOpen) draw(); } else win.grab(e); });
 }
 
 // Open someone's passport (or switch to them, if one's already open).
@@ -381,9 +387,9 @@ export function open(id) {
   if (!cv) create();
   if (id !== sel) { calDay = null; pose = newPose(); }
   sel = id;
-  const sx = act.screenX(id); // the panel goes on the other side of the screen from them
-  if (sx != null) { wrap.style.left = sx < 0.5 ? 'auto' : '16px'; wrap.style.right = sx < 0.5 ? '16px' : 'auto'; }
-  isOpen = true; wrap.style.display = 'block'; shown = ''; draw();
+  const sx = act.screenX(id); // the panel goes on the other side of the screen from them (unless you've moved it)
+  if (sx != null && !win.moved()) { wrap.style.left = sx < 0.5 ? 'auto' : '16px'; wrap.style.right = sx < 0.5 ? '16px' : 'auto'; }
+  isOpen = true; wrap.style.display = 'block'; win.apply(); shown = ''; draw();
   interact('passport', true);
 }
 function close() {
@@ -404,7 +410,7 @@ export function tickPassport(t) {
   if (key !== shown) { shown = key; draw(); }
   if (tab === 'id') drawPortrait(t);
 }
-addEventListener('keydown', (e) => { if (e.key === 'Escape' && isOpen) close(); });
+addEventListener('keydown', (e) => { if (isOpen && !e.panelClosed && topPanel() === 'passport' && (e.key === 'Escape' || (e.metaKey && e.key.toLowerCase() === 'w'))) { e.preventDefault(); e.panelClosed = true; close(); } });
 
 // In town: an arrow over whoever's passport is open (under the speech bubbles), and a name over whoever
 // the mouse is on (over them: tags = true).

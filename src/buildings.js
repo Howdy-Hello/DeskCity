@@ -5,15 +5,15 @@
 //   3. details   - things on the walls, doorways, ceiling lamps, elevator doors and floor numbers
 import { sprite, painter, addGrain, rng, pick, shade, textWidth, lineCells } from './draw.js';
 import { drawScreen, TV_CHANNELS, PC_APPS } from './screens.js';
-import { FURNITURE, ROOMS, FLATPACK, BOX, furnish, decorate, drawPiece, drawDetail } from './furniture.js';
+import { FURNITURE, ROOMS, FLATPACK, BOX, DETAILS, furnish, decorate, drawPiece, drawDetail } from './furniture.js';
 import { drawBeams, drawFacadeLight } from './sunlight.js';
 import { nightLevel } from './sky.js';
-import { styleOf, windowRects, palette, paintFacade, paintDoor, paintRoof, ROOFS_H, roomLook, paintRoomWall, paintLamp, brickWall } from './styles.js';
+import { styleOf, windowRects, palette, paintFacade, paintDoor, paintRoof, ROOFS_H, roomLook, paintRoomWall, paintLamp, brickWall, facadeSigns, facadeLamps, DOOR_REACH } from './styles.js';
 
 export const FLOOR_H = 30; // one storey; a stick person is ~19 cells tall
 export const LOT_W = 200;  // width of each building plot along the bottom of the screen
 const WALL = 2;
-const CORE_W = { stairs: 28, elevator: 16 };
+const CORE_W = { stairs: 28, elevator: 16, exit: 10 }; // (exit: the emergency stair beside a lift, seen from the front)
 const MIN_W = {
   bedroom: 32, kitchen: 37, living: 36, washroom: 30, study: 30, greenhouse: 32, gym: 34, balcony: 22,
   lobby: 30, desks: 60, boss: 40, hr: 34, common: 36, lounge: 36, meeting: 34, reception: 34, store: 60,
@@ -137,24 +137,30 @@ export const heightOf = (type, tier, style) => { const T = typeOf(type, tier, st
 export function layout(type, tier, seed, opts = {}) {
   const design = opts.plan ? opts.plan.style : opts.style, T = typeOf(type, tier, design), S = T === TYPES[type][tier] ? null : T;
   const r = rng(seed), rf = rng(seed ^ 0x5bd1e995); // r: the plan; rf: furniture
-  const core = T.core || [];
+  // New buildings with a lift also get an emergency stair, and homes and offices put their stairs /
+  // lift on the left about 4 times in 10 (older buildings keep theirs as they were: it's in the plan).
+  const old = opts.plan, liftOnly = (T.core || []).includes('elevator');
+  const exit = old ? !!old.exit : liftOnly;
+  const core = [...(T.core || []), ...(exit ? ['exit'] : [])];
+  const coreLeft = old ? !!old.coreLeft : core.length > 0 && (type === 'home' || type === 'office') && rng(seed ^ 0x2c1b3c6d)() < 0.4;
   const coreW = core.reduce((s, k) => s + CORE_W[k], 0);
-  const inner = T.w - 2 * WALL - (coreW ? coreW + WALL : 0);
+  const inner = T.w - 2 * WALL - (coreW ? coreW + WALL : 0), start = coreLeft ? WALL + coreW + WALL : WALL; // (rooms start after a core on the left)
   let plan = opts.plan ? JSON.parse(JSON.stringify(opts.plan)) : T.floors(r, inner, opts, T);
   if (Array.isArray(plan)) plan = { floors: plan, owner: [], companies: T.companies ? [{ name: companyName(r), color: BRAND_COLORS[Math.floor(r() * BRAND_COLORS.length)], floors: plan.map((_, f) => f) }] : [] };
   if (design && !opts.plan) plan.style = design;
+  if (!old) { if (exit) plan.exit = true; if (coreLeft) { plan.coreLeft = true; if (type === 'home') plan.floors[0].reverse(); } } // (the lobby beside the lift, the shop at the far end)
   if (T.companies && !opts.plan) plan.owner = plan.floors.map(() => 0);
   // Office washrooms go at the far end of the floor from the stairs / lift (on the ground floor,
   // just past the entrance room). Applied to saved plans too, so existing offices get it.
   if (type === 'office') plan.floors = plan.floors.map((list, f) => {
     const loos = list.filter((n) => n.startsWith('washroom')), rest = list.filter((n) => !n.startsWith('washroom'));
-    return f === 0 ? [...rest.slice(0, 1), ...loos, ...rest.slice(1)] : [...loos, ...rest];
+    return coreLeft ? [...rest, ...loos] : f === 0 ? [...rest.slice(0, 1), ...loos, ...rest.slice(1)] : [...loos, ...rest];
   });
-  if (plan.ox === undefined) plan.ox = T.playground || (T.balconies && r() < T.balconies ? BALCONY_W : 0); // room for balconies (or a playground) left of the walls
+  if (plan.ox === undefined) plan.ox = T.playground || (!coreLeft && T.balconies && r() < T.balconies ? BALCONY_W : 0); // room for balconies (or a playground) left of the walls
   if (plan.sign === undefined && T.signs) plan.sign = pick(r, T.signs);
   const n = plan.floors.length, roofH = ROOF_H[T.roof], H = n * FLOOR_H + roofH;
   const ox = plan.ox;
-  const L = { T, S, seed, plan, w: T.w, ox, n, H, roofH, feet: (f) => H - 1 - f * FLOOR_H, rooms: [], items: [], details: [], spots: [], door: WALL + 7, companies: plan.companies, hq: !!opts.hq, sign: plan.sign || T.sign };
+  const L = { T, S, seed, plan, w: T.w, ox, n, H, roofH, feet: (f) => H - 1 - f * FLOOR_H, rooms: [], items: [], details: [], spots: [], door: T.doorAt ? Math.round(T.w * T.doorAt) : start + Math.max(7, (DOOR_REACH[T.door]?.[0] ?? 0) + 3), coreLeft, companies: plan.companies, hq: !!opts.hq, sign: plan.sign || T.sign }; // (doorAt: a design's door elsewhere, e.g. a courtyard gate in the middle)
 
   // Older saves recorded their furniture by its position in the list; the lobbies now have different
   // furniture, so note how everything after each lobby moved (applied on loading, see city.js).
@@ -166,10 +172,10 @@ export function layout(type, tier, seed, opts = {}) {
   plan.floors.forEach((list, f) => {
     const mins = list.map((name) => MIN_W[baseKind(name)]);
     const total = mins.reduce((a, b) => a + b, 0), avail = inner - (list.length - 1) * WALL;
-    let x = WALL;
+    let x = start;
     list.forEach((name, i) => {
       const [kind, variant] = name.split(':');
-      const w = i < list.length - 1 ? Math.floor((mins[i] / total) * avail) : WALL + inner - x;
+      const w = i < list.length - 1 ? Math.floor((mins[i] / total) * avail) : start + inner - x;
       const unit = SHARED.has(kind) ? null : T.units === 'whole' ? 0 : T.units === 'floor' ? f : null;
       const room = { kind, variant, f, x, w, unit, id: L.rooms.length, company: plan.owner[f] ?? null, outdoor: !!ROOMS[kind].outdoor };
       L.rooms.push(room);
@@ -225,21 +231,26 @@ export function layout(type, tier, seed, opts = {}) {
   // A mixed-use block: the shop keeps the door on the left; the residents get their own door into the lobby.
   L.entrances = [L.door];
   const shopFront = type === 'home' && L.rooms.find((rm) => rm.f === 0 && isVenue(rm));
-  if (shopFront) { const lobbyRoom = L.rooms.find((rm) => rm.f === 0 && rm.kind === 'lobby'); if (lobbyRoom) { L.door = lobbyRoom.x + 7; L.entrances = [L.door, WALL + 7]; L.shopFront = shopFront.id; } }
+  if (shopFront) { const lobbyRoom = L.rooms.find((rm) => rm.f === 0 && rm.kind === 'lobby'); if (lobbyRoom) { L.door = lobbyRoom.x + 7; L.entrances = [L.door, shopFront.x + 7]; L.shopFront = shopFront.id; } }
   L.glass = T.facade === 'glass' || !!T.glass;
   L.bay = L.rooms.find((rm) => rm.kind === 'firebay') || null;
   L.pal = S ? palette(L, seed) : null;
 
-  let cx = T.w - WALL - coreW;
-  if (core.includes('stairs')) { L.stairs = { x: cx, w: CORE_W.stairs }; cx += CORE_W.stairs; }
-  if (core.includes('elevator')) L.elevator = { x: cx, w: CORE_W.elevator };
+  // The core: the stairs (or the lift) beside the rooms, the emergency stair at the outside wall.
+  let cx = coreLeft ? WALL : T.w - WALL - coreW;
+  for (const k of coreLeft ? ['exit', 'elevator', 'stairs'] : ['stairs', 'elevator', 'exit']) {
+    if (!core.includes(k)) continue;
+    L[k === 'elevator' ? 'elevator' : k] = { x: cx, w: CORE_W[k] };
+    cx += CORE_W[k];
+  }
 
   // Doors in every doorway. The one into the stairwell / lift is the household's front door.
   L.doors = [];
   const style = type === 'home' ? 'wood' : 'glass';
-  for (const room of L.rooms) if (!room.outdoor && room.x > WALL) L.doors.push({ f: room.f, x: room.x - WALL, style, open: 0, target: 0 });
+  const coreDoor = (f) => (type === 'home' && f > 0 ? 'front' : style);
+  for (const room of L.rooms) if (!room.outdoor && room.x > WALL) L.doors.push({ f: room.f, x: room.x - WALL, style: coreLeft && room.x === start ? coreDoor(room.f) : style, open: 0, target: 0 }); // (with the core on the left, the first room's door is the one into it)
   for (const room of L.rooms) if (room.outdoor) L.doors.push({ f: room.f, x: 0, style: 'glass', open: 0, target: 0 }); // balcony door in the outside wall
-  if (coreW) for (let f = 0; f < n; f++) L.doors.push({ f, x: T.w - WALL - coreW - WALL, style: type === 'home' && f > 0 ? 'front' : style, open: 0, target: 0 });
+  if (coreW && !coreLeft) for (let f = 0; f < n; f++) L.doors.push({ f, x: T.w - WALL - coreW - WALL, style: coreDoor(f), open: 0, target: 0 });
 
   // Windows in the side walls, on every floor: into the end rooms and the stairwell (not a lift
   // shaft, and not where a balcony door already is). Shops have their shop front instead.
@@ -248,16 +259,106 @@ export function layout(type, tier, seed, opts = {}) {
     if (f === 0 && L.bay) continue; // the fire engine drives out through there
     const left = L.rooms.find((rm) => rm.f === f && rm.x === WALL && !rm.outdoor);
     if (left && !L.doors.some((d) => d.f === f && d.x === 0)) L.sideWindows.push({ f, side: -1, x: 0, area: { x: left.x, w: left.w } });
+    if (coreLeft && L.stairs?.x === WALL) L.sideWindows.push({ f, side: -1, x: 0, area: { x: L.stairs.x, w: L.stairs.w } });
     const rx = T.w - WALL;
+    if (L.exit && L.exit.x + L.exit.w === rx) continue;
     if (L.elevator && L.elevator.x + L.elevator.w === rx) continue;
     if (L.stairs && L.stairs.x + L.stairs.w === rx) { L.sideWindows.push({ f, side: 1, x: rx, area: { x: L.stairs.x, w: L.stairs.w } }); continue; }
     const right = L.rooms.find((rm) => rm.f === f && rm.x + rm.w === rx && !rm.outdoor);
     if (right) L.sideWindows.push({ f, side: 1, x: rx, area: { x: right.x, w: right.w } });
   }
+  L.streetDoors = streetDoors(L, type);
   // Each room's windows (lit at night, and drawn outside on buildings with a design).
   L.wins = new Map();
-  for (const room of L.rooms) if (!room.outdoor && T.facade !== 'shop' && (L.glass || room.w >= 16)) L.wins.set(room.id, windowRects(L, room));
+  for (const room of L.rooms) { const rects = roomWindows(L, room); if (rects?.length) L.wins.set(room.id, rects); }
+  matchInsideWindows(L, type);
+  L.signs = shopSigns(L);
+  L.lamps = facadeLamps(L); // lanterns and the like, lit every night
+  L.stairWindows = !!L.stairs && !L.glass && (!!S || !['pub', 'school', 'firehouse', 'police', 'hospital', 'factory', 'shop'].includes(T.facade)); // (lit by the stairwell's sensor light at night)
   return L;
+}
+
+// Each room's windows as the outside draws them (local x, top relative to its floor row, w, h), so
+// they light up in the right place at night: shop fronts, the pub's small panes, classroom windows,
+// the hospital's bands; on buildings with a design, its own windows (styles.js).
+function roomWindows(L, room) {
+  const T = L.T, d = L.door, mid = (r) => Math.round(r.x + r.w / 2 - 5);
+  if (room.outdoor) return null;
+  if (room.f === 0 && isVenue(room) && L.shopFront === room.id) return [[room.x + 13, -18, room.w - 16, 16]]; // a shop front under the flats
+  if (T.facade === 'shop') return room.f === 0 && isVenue(room) && room === L.rooms.find((r) => r.f === 0 && isVenue(r)) ? [[d + 6, -17, L.w - d - 10, 15]] : null; // the big shop window
+  if (L.S) { const rects = L.glass || room.w >= 16 ? windowRects(L, room) : null; return rects && room.f === 0 && !L.glass ? clearOfDoor(L, room, rects) : rects; }
+  switch (T.facade) {
+    case 'pub': { if (room.kind !== 'pub') return null; const out = []; for (let x = d + 10; x + 20 < L.w; x += 26) if (x >= room.x && x < room.x + room.w) out.push([x, -19, 20, 12]); return out; }
+    case 'school': { if (room.kind !== 'classroom') return null; const out = []; for (let x = room.x + 6; x + 10 < room.x + room.w; x += 14) out.push([x, -20, 10, 11]); return out; }
+    case 'police': { if (room.kind !== 'cells') return [[mid(room), -20, 10, 10]]; const out = []; for (let x = room.x + 8; x + 6 < room.x + room.w; x += 18) out.push([x, -22, 6, 4]); return out; }
+    case 'hospital': { if (room.f === 0) return null; const out = []; for (let x = 6; x + 10 < L.w - (L.elevator ? 18 : 0); x += 14) if (x >= room.x && x + 10 <= room.x + room.w) out.push([x, -20, 10, 10]); return out; }
+    case 'firehouse': return room.f > 0 ? [[mid(room), -20, 10, 10]] : null;
+    case 'factory': return room.kind === 'factoryfloor' ? [[4, -25, L.w - 8, 3]] : null;
+  }
+  return L.glass || room.w >= 16 ? windowRects(L, room) : null;
+}
+// Windows on the ground floor keep clear of the front door (and its frame, pillars or porch): moved
+// along past it if there's room in the room, otherwise left out.
+function clearOfDoor(L, room, rects) {
+  const [l, r] = DOOR_REACH[L.T.door] || [6, 6], z0 = L.door - l - 2, z1 = L.door + r + 3;
+  return rects.flatMap(([x, t, w, h]) => {
+    if (x + w + 1 < z0 || x - 1 > z1) return [[x, t, w, h]];
+    const nx = z1 + 1;
+    return nx + w <= room.x + room.w - 3 ? [[nx, t, w, h]] : [];
+  });
+}
+// The windows on a room's back wall (seen when it's cut away) are the same as its windows outside:
+// same places, sizes and glazing. A room with none outside has none inside, and pictures or clocks
+// that would hang over one are left out. (Shop fronts stay off the back wall: that's where the
+// shelves are. Glass buildings' back walls are all glass already.)
+const FACADE_WIN = { pub: 'pub', school: 'classic', police: 'classic', hospital: 'classic', firehouse: 'classic', factory: 'strip' };
+function matchInsideWindows(L, type) {
+  if (L.glass) return;
+  const curtains = type === 'home' && !L.pal?.plainGlass;
+  for (const room of L.rooms) {
+    if (room.outdoor) continue;
+    if (room.f === 0 && isVenue(room) && (L.shopFront === room.id || type === 'shop' || type === 'restaurant')) continue;
+    const inRoom = (d) => d.f === room.f && d.x >= room.x && d.x < room.x + room.w;
+    const old = L.details.filter((d) => inRoom(d) && (d.kind === 'window' || d.kind === 'smallwindow'));
+    const rects = L.wins.get(room.id) || [];
+    if (!old.length && !rects.length) continue;
+    const color = old[0]?.color || '#c0504d';
+    const style = L.S ? (L.S.facade === 'infill' && room.f === L.n - 1 && rects[0]?.[2] > 40 ? 'box' : L.S.win || 'classic') : room.kind === 'cells' ? 'slit' : FACADE_WIN[L.T.facade] || 'classic';
+    const wins = rects.map(([x, top, w, h]) => ({ kind: 'window', x, top, w, h, style, color, curtains: curtains && room.kind !== 'washroom', f: room.f }));
+    const over = (d) => { const D = DETAILS[d.kind]; return D && wins.some((v) => d.x < v.x + v.w + 1 && d.x + D.w > v.x - 1 && d.top < v.top + v.h + 1 && d.top + D.h > v.top - 1); };
+    L.details = [...L.details.filter((d) => !old.includes(d) && !(inRoom(d) && d.kind !== 'brand' && d.kind !== 'directory' && over(d))), ...wins];
+  }
+}
+// Signs that glow like neon after dark while the place is open: [x, top, w, h, ink, room id].
+function shopSigns(L) {
+  const T = L.T, out = [], gyTop = (t) => t; // (tops relative to the ground floor's floor row)
+  const venue = L.rooms.find((r) => r.f === 0 && isVenue(r));
+  if (!venue) return out;
+  if (L.S && L.shopFront == null) return facadeSigns(L);
+  if (L.shopFront != null) { const r = L.rooms[L.shopFront], ink = r.kind === 'pub' ? '#f5b041' : r.kind === 'store' ? '#f1c40f' : '#f5e6c8', sign = r.kind === 'store' ? 'MART' : r.kind === 'pub' ? 'BAR' : 'CAFE', sw = textWidth(sign) + 6; out.push([Math.round(r.x + 1 + (r.w - 2) / 2 - sw / 2), gyTop(-30), sw, 7, ink, r.id]); }
+  else if (T.facade === 'shop' && !L.S) { const sw = textWidth(L.sign) + 6; out.push([Math.round(L.w / 2 - sw / 2), -27, sw, 7, '#f1c40f', venue.id]); }
+  else if (T.facade === 'pub') { const sw = textWidth(L.sign) + 6; out.push([Math.round(L.w / 2 - sw / 2), -27, sw, 7, '#f5b041', venue.id]); }
+  return out;
+}
+
+// The street doors as drawn on the outside (one per entrance): where the door is in the front wall
+// (local x, top relative to the ground floor's floor row, width, height) and how it opens: glass
+// doors slide apart by themselves (shops, offices, the hospital, glass lobbies); the rest swing in.
+function streetDoors(L, type) {
+  const T = L.T, S = L.S, door = (x, top, w, h, kind) => ({ x, top, w, h, kind });
+  const main = (d) => {
+    if (S) return S.door === 'glass' ? door(d - 6, -20, 13, 21, 'slide') : S.door === 'deco' ? door(d - 5, -21, 11, 22, 'slide')
+      : S.door === 'shop' ? door(d - 4, -18, 9, 19, 'slide') : S.door === 'shopwood' ? door(d - 4, -19, 9, 20, 'swing')
+      : S.door === 'modern' ? door(d - 4, -22, 9, 23, 'swing') : S.door === 'arch' ? door(d - 4, -18, 9, 19, 'swing') : door(d - 4, -20, 9, 21, 'swing');
+    if (T.facade === 'shop') return door(d - 4, -18, 9, 19, 'slide');
+    if (T.facade === 'hospital') return door(d - 6, -20, 13, 21, 'slide');
+    if (L.shopFront != null || T.facade === 'pub' || T.facade === 'factory') return door(d - 4, -20, 9, 21, 'swing');
+    if (T.facade === 'school' || T.facade === 'police') return door(d - 5, -20, 11, 21, 'swing');
+    if (T.facade === 'firehouse') return null; // (the crew use their own door by the engine bay)
+    if (T.facade === 'glass' || T.facade === 'stucco') return door(d - 5, -20, 11, 21, 'slide');
+    return door(d - 4, -20, 9, 21, 'swing');
+  };
+  return L.entrances.map((x, i) => (i === 0 ? main(x) : door(x - 5, -19, 10, 20, 'slide'))); // (a shop's own door under the flats)
 }
 
 // ---------- layer 2 + 3: the cut-away inside ----------
@@ -298,6 +399,7 @@ function bakeInterior(L, seed) {
   }
   if (L.stairs) drawStairs(p, L);
   if (L.elevator) drawShaft(p, L);
+  if (L.exit) drawExit(p, L);
   for (const sw of L.sideWindows) { // glass in the side walls
     const y = feet(sw.f);
     p.rect(sw.x, y - 21, WALL, 1, '#7d756b'); p.rect(sw.x, y - 20, WALL, 11, '#a9d6ea'); p.rect(sw.x, y - 15, WALL, 1, '#cfe7f2'); p.rect(sw.x, y - 9, WALL, 1, '#7d756b');
@@ -418,7 +520,7 @@ function drawStairs(p, L) {
     const y = feet(f);
     p.rect(x, y - 27, w, 1, shade(STAIR_WALL, 0.93));
     if (f > 0) { p.rect(x, y + 1, 5, 2, CONCRETE); p.rect(x, y + 1, 5, 1, TREAD); } // floor landing
-    doorway(p, x - WALL, y);
+    doorway(p, L.coreLeft ? x + w : x - WALL, y); // (on the rooms' side)
   }
   for (let f = 0; f < n - 1; f++) {
     const y = feet(f);
@@ -431,13 +533,31 @@ function drawStairs(p, L) {
   for (let k = x + 6; k < x + w; k += 3) p.rect(k, ty - 6, 1, 7, RAIL);
 }
 
+// The emergency stair beside a lift, seen from the front: a narrow concrete stairwell where each
+// flight runs back from the floor above to the one below, so you see its treads one above another.
+// A green exit sign over the way in on every floor. (People going down it are drawn behind the
+// treads above their feet: see Building.drawExitOver.)
+const EXIT_BG = '#d6cfc3', EXIT_TREAD = '#efe9de', EXIT_NOSE = '#8f877b';
+export const exitTreads = (feetBelow) => Array.from({ length: 9 }, (_, k) => feetBelow - 3 * (k + 1)); // a flight's treads, bottom to top
+function drawExit(p, L) {
+  const { x, w } = L.exit, { n, feet } = L, topY = feet(n - 1) - 27;
+  p.rect(x, topY, w, feet(0) - topY + 1, EXIT_BG);
+  p.rect(x, topY, 1, feet(0) - topY + 1, shade(EXIT_BG, 0.85)); p.rect(x + w - 1, topY, 1, feet(0) - topY + 1, shade(EXIT_BG, 0.85));
+  for (let f = 0; f < n; f++) {
+    const y = feet(f);
+    p.rect(x, y + 1, w, 2, '#9a9286'); p.rect(x, y + 1, w, 1, EXIT_TREAD); // the landing
+    if (f < n - 1) for (const ty of exitTreads(feet(f))) { p.rect(x + 1, ty, w - 2, 1, EXIT_TREAD); p.rect(x + 1, ty + 1, w - 2, 1, EXIT_NOSE); } // the flight up to the next floor
+    const sx = L.coreLeft ? x + w - 7 : x + 1; p.rect(sx, y - 26, 6, 3, '#2e9e57'); p.rect(sx + 1, y - 25, 4, 1, '#eafff0'); // the exit sign
+  }
+}
+
 function drawShaft(p, L) {
   const { x } = L.elevator, { n, feet, roofH, H } = L;
   p.rect(x, roofH + 2, 16, H - roofH - 2, SHAFT);
   p.rect(x, roofH + 2, 1, H - roofH - 2, '#6d7177'); p.rect(x + 15, roofH + 2, 1, H - roofH - 2, '#6d7177');
   for (let f = 0; f < n; f++) {
     const y = feet(f), label = f === 0 ? 'G' : String(f);
-    if (x > WALL) doorway(p, x - WALL, y);
+    if (L.coreLeft) doorway(p, x + 16, y); else if (x > WALL) doorway(p, x - WALL, y); // (on the rooms' side)
     p.frame(x, y - 22, 16, 23, '#8c939a');
     p.rect(x + 1, y - 27, 14, 5, '#2b2b2b');
     p.text(label, x + 8 - textWidth(label) / 2, y - 27, '#ff9f43'); // floor number
@@ -458,7 +578,7 @@ const FACADE = {
     p.rect(0, L.roofH, 2, L.H - L.roofH, trim); p.rect(L.w - 2, L.roofH, 2, L.H - L.roofH, trim); // corner boards
   },
   brick(p, L, r) {
-    const [c, m] = pick(r, [['#b5543b', '#d8c4b0'], ['#8a5a44', '#cdbba6'], ['#c9a27a', '#efe2cc'], ['#8d8f94', '#d5d6d8'], ['#d9c9a8', '#f3ead8']]);
+    const [c, m] = pick(r, [['#b5543b', '#d8c4b0'], ['#c0603f', '#e3d2c0'], ['#c9a27a', '#efe2cc'], ['#d49a6a', '#f1e3cf'], ['#d9c9a8', '#f3ead8']]);
     brickWall(p, 0, L.roofH, L.w, L.H - L.roofH, c, m);
     for (let f = 1; f < L.n; f++) { p.rect(0, L.feet(f) + 1, L.w, 2, shade(m, 0.92)); p.rect(0, L.feet(f) + 3, L.w, 1, shade(c, 0.7)); } // a stone band at each floor, with its shadow
     p.rect(0, L.roofH, 2, L.H - L.roofH, shade(c, 0.85)); p.rect(L.w - 2, L.roofH, 2, L.H - L.roofH, shade(c, 0.85)); // the corners
@@ -528,7 +648,7 @@ function bakeExterior(L, seed) {
     const stripe = L.T.signs ? pick(r, ['#2e8b57', '#d9534f', '#2c6fb3', '#e67e22']) : '#d9534f';
     for (let x = 0; x < L.w; x += 4) p.rect(x, gy - 22, 4, 4, (x / 4) % 2 ? '#ffffff' : stripe); // awning
     const sign = L.sign, sw = textWidth(sign) + 6, sx = Math.round(L.w / 2 - sw / 2);
-    p.rect(sx, gy - 28, sw, 7, '#2c3e50'); p.text(sign, sx + 3, gy - 27, '#f1c40f');
+    p.rect(sx, gy - 27, sw, 7, '#2c3e50'); p.text(sign, sx + 3, gy - 26, '#f1c40f');
     p.rect(d - 4, gy - 18, 9, 19, '#bfe0ef'); p.frame(d - 4, gy - 18, 9, 19, '#555');
   } else if (front) {
     // (the residents' door, into the lobby, is drawn below)
@@ -575,7 +695,7 @@ const EXTRA_FACADE = {
     for (let x = d + 10; x + 20 < L.w; x += 26) { p.rect(x, gy - 19, 20, 12, '#f5cba7'); for (let k = 0; k < 20; k += 5) p.rect(x + k, gy - 19, 1, 12, '#3b2416'); p.rect(x, gy - 14, 20, 1, '#3b2416'); }
     p.rect(d - 4, gy - 20, 9, 21, '#6e2c00'); p.frame(d - 4, gy - 20, 9, 21, '#d4ac0d'); p.px(d + 2, gy - 9, '#d4ac0d');
     const sign = L.sign, sw = textWidth(sign) + 6, sx = Math.round(L.w / 2 - sw / 2);
-    p.rect(sx, gy - 29, sw, 7, '#1e1e22'); p.frame(sx, gy - 29, sw, 7, '#d4ac0d'); p.text(sign, sx + 3, gy - 28, '#f5b041');
+    p.rect(sx, gy - 27, sw, 7, '#1e1e22'); p.frame(sx, gy - 27, sw, 7, '#d4ac0d'); p.text(sign, sx + 3, gy - 26, '#f5b041');
   },
   school(p, L, r, gy, d) { // red brick, big classroom windows, the school's name over the door
     FACADE.brick(p, L, rng(L.T.w));
@@ -736,6 +856,36 @@ export class Building {
   }
   // The street doors: the main one, and a shop's own door on a mixed-use block.
   entrances() { return this.L.entrances.map((x) => this.x0 + x); }
+  // Part of running the town: a street door opens when someone's right at it (an automatic door
+  // a step sooner) and eases shut once they're through.
+  updateStreetDoors(people) {
+    const doors = this.L.streetDoors, open = (this.streetDoor ??= doors.map(() => 0));
+    doors.forEach((g, i) => {
+      if (!g) return;
+      const X = this.x0 + g.x + g.w / 2, reach = g.kind === 'slide' ? 10 : 4;
+      const near = people.some((p) => Math.abs(p.x - X) < reach && ((p.b === this && p.f === 0 && p.surface === 'floor') || (!p.b && !p.inCar && !p.aboard && p.surface === 'ground' && Math.abs(p.y - this.G) < 3)));
+      open[i] += ((near ? 1 : 0) - open[i]) * (near ? 0.35 : 0.15);
+      if (open[i] < 0.01) open[i] = 0;
+    });
+  }
+  // Drawn over the front wall: the doorway (lit inside after dark) and the door, slid apart or swung in.
+  drawStreetDoors(ctx, top) {
+    const L = this.L;
+    (this.streetDoor || []).forEach((k, i) => {
+      const g = L.streetDoors[i];
+      if (!g || k < 0.03) return;
+      const X = this.x0 + g.x, Y = top + L.feet(0) + g.top, sx = L.ox + g.x, sy = L.feet(0) + g.top;
+      ctx.fillStyle = '#5b5247'; ctx.fillRect(X, Y, g.w, g.h); // the doorway
+      if (g.kind === 'slide') {
+        const half = Math.floor(g.w / 2), shift = Math.round(half * k), vis = half - shift;
+        if (vis > 0) { ctx.drawImage(this.exterior, sx + shift, sy, vis, g.h, X, Y, vis, g.h); ctx.drawImage(this.exterior, sx + half, sy, vis, g.h, X + g.w - vis, Y, vis, g.h); }
+      } else {
+        const lw = Math.max(2, Math.round(g.w * (1 - 0.78 * k))); // swung in: seen ever more edge-on
+        ctx.drawImage(this.exterior, sx, sy, g.w, g.h, X, Y, lw, g.h);
+        ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.fillRect(X + lw - 1, Y, 1, g.h);
+      }
+    });
+  }
   place(cx, G) { this.x0 = Math.round(cx - this.L.w / 2); this.G = G; this.upgrade?.next.place(cx, G); }
   ready() { return !this.build; }
   feetY(f) { return this.G - f * FLOOR_H; }
@@ -749,6 +899,24 @@ export class Building {
   // Is this room (a shop, restaurant, pub) open for business now? hour: 0-24.
   isOpen(r, hour) { const o = ROOMS[r.kind].open; return !!o && ((hour >= o[0] && hour < o[1]) || hour + 24 < o[1]); }
   elevX() { return this.x0 + this.L.elevator.x + 8; }
+  exitX() { return this.x0 + this.L.exit.x + 5; } // the middle of the emergency stair
+  // Someone going down the emergency stair is behind the treads above their feet (the stair runs
+  // back from them): draw those treads over them. Worked out from where they are, so the other
+  // desktops' windows (which don't know anyone's plans) draw it too.
+  drawExitOver(ctx, people) {
+    const E = this.L.exit;
+    if (!E) return;
+    for (const p of people) {
+      if (p.b !== this || Math.abs(p.x - (this.x0 + E.x + 5)) > 3) continue;
+      const fy = (this.G - p.y) / FLOOR_H, fBelow = Math.floor(fy + 1e-6);
+      if (fy - fBelow < 0.02) continue; // standing on a landing
+      for (const ty of exitTreads(this.feetY(fBelow))) {
+        if (ty >= p.y - 1 || ty < p.y - 22) continue; // only the treads above their feet, up to their head
+        ctx.fillStyle = EXIT_TREAD; ctx.fillRect(this.x0 + E.x + 1, ty, E.w - 2, 1);
+        ctx.fillStyle = EXIT_NOSE; ctx.fillRect(this.x0 + E.x + 1, ty + 1, E.w - 2, 1);
+      }
+    }
+  }
   stairX() { return this.x0 + this.L.stairs.x + 4; } // where every flight starts and ends
   stairPath(f, up) { return stairPath(this.L, f, up).map(([x, y]) => [this.x0 + x, this.G - (this.L.H - 1) + y]); }
   roomAt(f, x) { return this.L.rooms.find((r) => r.f === f && x >= this.x0 + r.x && x < this.x0 + r.x + r.w); }
@@ -783,10 +951,10 @@ export class Building {
     const { now, t } = w, L = this.L, top = this.G - (L.H - 1), site = this.build || this.demolish;
     const rows = this.build ? Math.floor(L.H * this.progress(now, this.build)) : this.demolish ? Math.ceil(L.H * (1 - this.progress(now, this.demolish))) : L.H, sy = L.H - rows;
     if (rows > 0) {
-      // Nobody inside, so the front wall covers it all: skip drawing the inside (except the balconies or
-      // playground beside the walls, which the front doesn't cover).
-      const covered = !site && this.reveal < 0.004 && !people.length;
-      if (covered) { this.easeDoors(); if (L.ox) ctx.drawImage(this.interior, 0, sy, L.ox, rows, this.x0 - L.ox, top + sy, L.ox, rows); }
+      // Nobody inside (or the view setting keeps it shut), so the front wall covers it all: skip drawing
+      // the inside (except the balconies or playground beside the walls, which the front doesn't cover).
+      const covered = !site && this.reveal < 0.004 && (!people.length || this.revealTo === 0);
+      if (covered) { if (L.ox) ctx.drawImage(this.interior, 0, sy, L.ox, rows, this.x0 - L.ox, top + sy, L.ox, rows); }
       else ctx.drawImage(this.interior, 0, sy, L.w + L.ox, rows, this.x0 - L.ox, top + sy, L.w + L.ox, rows);
       if (!site && !covered) {
         this.drawLive(ctx, people, t, new Date(now));
@@ -802,6 +970,7 @@ export class Building {
         }
         for (const p of people) if (p.surface !== 'elev' && !back.includes(p)) drawPerson(p);
         this.drawOver(ctx, people, t);
+        this.drawExitOver(ctx, people);
         this.drawLights(ctx, people, w);
         if (!w.potato) drawBeams(ctx, this, w, w.light); // sun (or moon) shining in through the side windows
         w.hooks?.glow?.(ctx, this, w); // flames, smoke, water: not darkened by the night
@@ -810,6 +979,7 @@ export class Building {
       if (a > 0.02) {
         ctx.globalAlpha = a;
         ctx.drawImage(this.exterior, 0, sy, L.w + L.ox, rows, this.x0 - L.ox, top + sy, L.w + L.ox, rows);
+        if (!site) this.drawStreetDoors(ctx, top);
         const n = nightLevel(w.hour), from = Math.max(sy, L.roofH);
         if (n > 0) { ctx.fillStyle = `rgba(10,16,40,${0.4 * n})`; ctx.fillRect(this.x0, top + from, L.w, L.H - from); }
         ctx.globalAlpha = 1;
@@ -823,7 +993,8 @@ export class Building {
     if (this.upgrade) { const u = this.upgrade.next; scaffold(ctx, u.x0, u.L.w, u.G - (u.L.H - 1), u.G, this.progress(now, this.upgrade)); }
   }
 
-  // Doors swing towards where they were last pushed.
+  // Doors swing towards where they were last pushed. Part of running the town (main.js), not of
+  // drawing it: the leader only draws its own desktop, and other desktops' windows show its doors.
   easeDoors() {
     for (const d of this.L.doors) {
       d.open += ((d.target ?? 0) - d.open) * 0.22;
@@ -841,9 +1012,8 @@ export class Building {
       if (stage === 'fold') { px(X + b.lx - 1, y, '#c8a06a', 8, 1); px(X + b.lx, y - 1, '#b8905a', 6, 1); } // folded flat
       else drawBox(ctx, X + b.lx, y, b.size, stage !== 'open');
     }
-    // Doors swing to where someone last pushed them, open or shut. (Drawn a colour at a time:
-    // frames, then faces, then handles; changing colour is the slow part.)
-    this.easeDoors();
+    // Doors, as open as they've swung (see easeDoors). (Drawn a colour at a time: frames, then
+    // faces, then handles; changing colour is the slow part.)
     for (const style in DOOR) {
       const [face, edge] = DOOR[style], mine = this.L.doors.filter((d) => d.style === style);
       if (!mine.length) continue;
@@ -853,11 +1023,11 @@ export class Building {
     }
     for (const r of this.L.rooms) { // drawn curtains, over the window
       if (!this.curtainsShut(r)) continue;
-      const d = (r.windowDetail ??= this.L.details.find((d) => d.kind === 'window' && d.f === r.f && d.x >= r.x && d.x < r.x + r.w) || null);
-      if (!d) continue;
-      const y = this.feetY(r.f) - 21;
-      px(X + d.x - 1, y, d.color, 12, 11);
-      for (let k = 1; k < 12; k += 3) px(X + d.x - 1 + k, y, shade(d.color, 0.8), 1, 11); // folds
+      for (const d of (r.windowDetails ??= this.L.details.filter((d) => d.kind === 'window' && d.f === r.f && d.x >= r.x && d.x < r.x + r.w))) {
+        const y = this.feetY(r.f) + (d.top ?? -20) - 1, cw = (d.w ?? 10) + 2, ch = (d.h ?? 10) + 1;
+        px(X + d.x - 1, y, d.color, cw, ch);
+        for (let k = 1; k < cw; k += 3) px(X + d.x - 1 + k, y, shade(d.color, 0.8), 1, ch); // folds
+      }
     }
     // Light switches: the toggle is up when the light is on. (Plates first, then toggles.)
     const switchRooms = (this.switchRooms ??= this.L.rooms.filter((r) => !(r.outdoor || SHARED.has(r.kind) || r.kind === 'reception' || (this.type === 'office' && r.kind === 'washroom') || (this.type !== 'home' && this.type !== 'office'))));
@@ -1001,7 +1171,7 @@ export class Building {
   // The room's window on the back wall (local x of its middle), or null.
   windowOf(r) {
     const d = this.L.details.find((d) => d.kind === 'window' && d.f === r.f && d.x >= r.x && d.x < r.x + r.w);
-    return d ? d.x + 5 : null;
+    return d ? d.x + Math.round((d.w ?? 10) / 2) : null;
   }
 
   // The open share (0..1) of the doorway in the wall at local x on floor f (no door: always open).
@@ -1013,6 +1183,24 @@ export class Building {
   // After dark: lit rooms glow warm, dark ones go dark, and light spills a little way into a dark
   // room through an open doorway. Walls and doors are shaded with the rooms beside them.
   // Stairwells and lift shafts stay lit.
+  // Sensor lights in the stairwell and the lift: on, on that floor, while someone's on the stairs
+  // there (and for 8 seconds after), and wherever the lift car's in use. Worked out once a frame.
+  coreLit(people, w) {
+    if (this._coreT === w.t) return this._core;
+    const L = this.L, last = (this._coreLast ??= new Float64Array(L.n).fill(-1e9)), e = this.elevator;
+    const lastX = (this._exitLast ??= new Float64Array(L.n).fill(-1e9));
+    for (const p of people) {
+      if (p.b !== this) continue;
+      const lx = p.x - this.x0, fy = (this.G - p.y) / FLOOR_H; // how high up they are, in floors
+      const on = L.stairs && lx >= L.stairs.x - 2 && lx <= L.stairs.x + L.stairs.w + 1 ? last : L.exit && lx >= L.exit.x && lx < L.exit.x + L.exit.w ? lastX : null;
+      if (on) for (const f of [Math.floor(fy), Math.ceil(fy)]) if (f >= 0 && f < L.n) on[f] = w.t;
+    }
+    const lift = e && (e.state !== 'idle' || people.some((p) => p.b === this && p.surface === 'elev'));
+    this._core = { stairs: Array.from({ length: L.n }, (_, f) => w.t - last[f] < 8), exit: Array.from({ length: L.n }, (_, f) => w.t - lastX[f] < 8), lift: (f) => !!lift && (f === Math.floor(e.pos) || f === Math.ceil(e.pos)) };
+    this._coreT = w.t;
+    return this._core;
+  }
+
   drawLights(ctx, people, w) {
     const n = nightLevel(w.hour);
     // Indoors is a little dimmer than outdoors in the day (more with the curtains drawn), so a
@@ -1058,6 +1246,15 @@ export class Building {
         c = e;
       }
     }
+    if (n > 0 && (L.stairs || L.elevator || L.exit)) { // the stairwell, the lift and the emergency stair, by their sensor lights
+      const core = this.coreLit(people, w);
+      for (let f = 0; f < L.n; f++) {
+        const y = this.feetY(f) - 27;
+        if (L.stairs) { ctx.fillStyle = core.stairs[f] ? `rgba(255,210,120,${0.12 * n})` : `rgba(10,16,40,${0.5 * n})`; ctx.fillRect(this.x0 + L.stairs.x, y, L.stairs.w, 28); }
+        if (L.elevator) { ctx.fillStyle = core.lift(f) ? `rgba(255,210,120,${0.1 * n})` : `rgba(10,16,40,${0.45 * n})`; ctx.fillRect(this.x0 + L.elevator.x, y, L.elevator.w, 28); }
+        if (L.exit) { ctx.fillStyle = core.exit[f] ? `rgba(255,210,120,${0.1 * n})` : `rgba(10,16,40,${0.4 * n})`; ctx.fillRect(this.x0 + L.exit.x, y, L.exit.w, 28); }
+      }
+    }
   }
 
   // From outside at night: lit rooms glow in their windows and light the pavement below.
@@ -1069,6 +1266,19 @@ export class Building {
       const rects = L.wins.get(r.id);
       if (!rects) continue;
       const lit = this.isLit(r, people, w), y = this.feetY(r.f), shut = this.curtainsShut(r);
+      // A shop or cafe that's closed (and empty) has its roller shutter down, day or night.
+      if (r.f === 0 && (r.kind === 'store' || r.kind === 'cafe') && !this.isOpen(r, w.hour) && !people.some((p) => p.f === 0 && this.roomAt(0, p.x) === r)) {
+        ctx.globalAlpha = alpha;
+        for (const [lx, t, ww, hh] of rects) {
+          const x = this.x0 + lx, top = y + t;
+          ctx.fillStyle = '#9aa0a5'; ctx.fillRect(x, top, ww, hh);
+          ctx.fillStyle = '#80868b'; for (let k = top + 1; k < top + hh; k += 2) ctx.fillRect(x, k, ww, 1);
+          ctx.fillStyle = '#5d6368'; ctx.fillRect(x, top + hh - 1, ww, 1); ctx.fillRect(x + Math.floor(ww / 2) - 1, top + hh - 3, 3, 1); // the bottom rail and its handle
+          if (n > 0) { ctx.fillStyle = `rgba(8,12,30,${0.35 * n})`; ctx.fillRect(x, top, ww, hh); }
+        }
+        ctx.globalAlpha = 1;
+        continue;
+      }
       for (const [lx, t, ww, hh] of rects) {
         const x = this.x0 + lx, top = y + t;
         ctx.globalAlpha = alpha;
@@ -1096,6 +1306,32 @@ export class Building {
         } else { ctx.fillStyle = `rgba(8,12,30,${0.45 * n})`; ctx.fillRect(x, top, ww, hh); }
         ctx.globalAlpha = 1;
       }
+    }
+    // The stairwell's little windows, by its sensor lights.
+    if (n > 0 && L.stairWindows) {
+      const core = this.coreLit(people, w);
+      ctx.globalAlpha = alpha;
+      for (let f = 0; f < L.n; f++) {
+        const x = this.x0 + L.stairs.x + 9, top = this.feetY(f) - 22;
+        if (core.stairs[f]) { ctx.fillStyle = `rgba(255,214,130,${0.85 * n})`; ctx.fillRect(x, top, 5, 12); ctx.fillStyle = `rgba(255,200,110,${0.15 * n})`; ctx.fillRect(x - 2, top - 2, 9, 16); }
+        else { ctx.fillStyle = `rgba(8,12,30,${0.45 * n})`; ctx.fillRect(x, top, 5, 12); }
+      }
+      ctx.globalAlpha = 1;
+    }
+    // Lanterns by the door and the like: lit every night.
+    if (n > 0) for (const [lx, t, lw, lh] of L.lamps) {
+      const x = this.x0 + lx, top = this.feetY(0) + t;
+      ctx.globalAlpha = alpha; ctx.fillStyle = `rgba(255,90,60,${0.22 * n})`; ctx.fillRect(x - 3, top - 3, lw + 6, lh + 6); ctx.fillStyle = `rgba(255,140,90,${0.5 * n})`; ctx.fillRect(x + 1, top + 1, lw - 2, lh - 2); ctx.globalAlpha = 1;
+    }
+    // Shop, restaurant and pub signs glow like neon after dark while they're open.
+    if (n > 0 && !w.potato) for (const [lx, t, sw, sh, ink, id] of L.signs) {
+      const r = L.rooms[id];
+      if (!this.isOpen(r, w.hour)) continue;
+      const x = this.x0 + lx, top = this.feetY(0) + t, [cr, cg, cb] = [1, 3, 5].map((k) => parseInt(ink.slice(k, k + 2), 16));
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = `rgba(${cr},${cg},${cb},${0.18 * n})`; ctx.fillRect(x - 2, top - 2, sw + 4, sh + 4);
+      ctx.fillStyle = `rgba(${cr},${cg},${cb},${0.08 * n})`; ctx.fillRect(x - 5, top - 4, sw + 10, sh + 8);
+      ctx.globalAlpha = 1;
     }
   }
 

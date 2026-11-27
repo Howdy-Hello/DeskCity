@@ -69,7 +69,7 @@ export function traits(p) {
     exMorning: r() < 0.6, exDays: 3 + Math.floor(r() * 3),
     gait, pace: 0.88 + r() * 0.24,
     officeStart: 7.5 + Math.floor(r() * 10) / 4, // 7:30 to 9:45
-    shopDays: 2 + Math.floor(r() * 2),
+    shopDays: 3 + Math.floor(r() * 2),        // days a week they pop to the shops
     honest: r() > 0.07, temper: r() < 0.1, lazy: r() < 0.12, // lazy: ignores the fire alarm
     tolerance: 0.4 + r() * 0.6,            // how much smoke they'll put up with
     daysOff: [off, (off + 3) % 7, (off + 5) % 7],
@@ -80,7 +80,7 @@ export function traits(p) {
 // Shared by the whole household: when dinner is, how often they eat out, who cooks.
 export function homeTraits(hh) {
   const r = dice(hh, 7);
-  return { dinner: 17.75 + (r() + r()) * 1.1, outWeekday: 0.04 + r() * 0.12, outWeekend: 0.15 + r() * 0.3, cook: Math.floor(r() * 2), park: 0.35 + r() * 0.4 };
+  return { dinner: 17.75 + (r() + r()) * 1.1, outWeekday: 0.12 + r() * 0.2, outWeekend: 0.3 + r() * 0.35, cook: Math.floor(r() * 2), park: 0.35 + r() * 0.4 };
 }
 
 // ---------- one person's day ----------
@@ -109,6 +109,7 @@ function wakeOn(p, d, city) {
 // The household: everyone who lives in the same home.
 const housemates = (p, city) => city.people.filter((q) => q.hh === p.hh);
 const schoolOpen = (city, d) => !isWeekend(d) && city.lots.some((b) => b?.type === 'school' && b.ready());
+const eatery = (city) => city.lots.some((b) => b?.ready() && b.L.rooms.some((r) => r.kind === 'diner' || r.kind === 'cafe')); // a restaurant, or a cafe under some flats
 
 // The day's plan: a list of { from, to, kind, key } blocks, hours past midnight (past 24 is after
 // midnight). Between the last block and the next day's first one, they're asleep.
@@ -152,7 +153,11 @@ function buildDay(p, d, city) {
     if (runner && leave > 8.0) { if (t < 7.55) add(t, 7.55, 'relax'); add(Math.max(t, 7.55), 8.0, 'school-run'); t = Math.max(t, 8.0); }
     if (t < leave - 1.5) t = freeTime(add, p, t, leave, R, HR, we, kids, d); // a late start: the morning to themselves
     else if (t < leave) add(t, leave, 'relax');
-    add(Math.max(t, leave), job.to, 'work', { shift: job }); t = job.to;
+    // Office workers often slip out for lunch (the sociable ones more), when there's somewhere to eat.
+    const lunch = job.role === 'office' && job.from < 11.5 && job.to > 14 && R() < 0.35 + 0.35 * T.social && eatery(city);
+    if (lunch) { const l = 12 + Math.floor(R() * 4) * 0.25; add(Math.max(t, leave), l, 'work', { shift: job }); add(l, l + 0.75, 'lunchout'); add(l + 0.75, job.to, 'work', { shift: job }); }
+    else add(Math.max(t, leave), job.to, 'work', { shift: job });
+    t = job.to;
   } else if (job) { // a night shift: the afternoon before it, an early dinner, then off to work
     t = freeTime(add, p, t, 17.5, R, HR, we, kids, d);
     add(t, 18.2, 'cook'); add(18.2, 18.8, 'dinner'); add(18.8, job.from - 0.4, 'relax');
@@ -167,7 +172,7 @@ function buildDay(p, d, city) {
   let D = H.dinner;
   if (t > D - 0.6) D = t + 0.6;
   const shopDay = !p.kid && dice(p.seed, d, 5)() < T.shopDays / 7;
-  if (shopDay && p.shoppedDay !== d && D - t > 1.1 && t < 21) { add(t, t + 0.75, 'shop'); t += 0.75; }
+  if (shopDay && p.shoppedDay !== d && D - t > 1.3 && t < 21) { add(t, t + 1, 'shop'); t += 1; }
   if (exDay && !T.exMorning && D - t > 1.25) { add(t, t + 1, T.fitness === 'runner' ? 'run' : 'gym'); add(t + 1, t + 1.25, 'shower'); t += 1.25; }
   const eatOut = HR() < (we || friday ? H.outWeekend : H.outWeekday);
   const cooks = adults.length ? adults[H.cook % adults.length] === p : true;
@@ -195,14 +200,14 @@ function freeTime(add, p, t, until, R, HR, we, kids, d) {
   const pickOne = () => {
     const k = R();
     if (p.kid) return k < 0.45 ? 'play-home' : k < 0.7 ? 'relax' : 'outing';
-    return k < 0.32 ? 'relax' : k < 0.55 ? 'outing' : k < 0.7 && p.shoppedDay !== d ? 'shop' : k < 0.85 ? 'hobby' : 'relax';
+    return k < 0.3 ? 'relax' : k < 0.5 ? 'outing' : k < 0.7 && p.shoppedDay !== d ? 'shop' : k < 0.85 ? 'hobby' : 'relax';
   };
   let lunched = false;
   while (t < until - 0.25) {
     if (park && t >= park[0] - 0.05 && t < park[1]) { add(t, park[1], 'playground'); t = park[1]; continue; }
     if (!lunched && t >= 11.9 && t < 14) {
       lunched = true;
-      const out = !p.kid && we && R() < 0.2 + 0.4 * traits(p).social;
+      const out = !p.kid && (we ? R() < 0.3 + 0.45 * traits(p).social : R() < 0.12 + 0.25 * traits(p).social);
       add(t, t + (out ? 1.25 : 0.6), out ? 'lunchout' : 'lunch'); t += out ? 1.25 : 0.6; continue;
     }
     let len = 0.75 + Math.floor(R() * 4) * 0.25, end = Math.min(until, t + len);

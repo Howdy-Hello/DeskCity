@@ -131,8 +131,13 @@ function want(p, w) {
 // ---------- route planning ----------
 export const here = (p) => ({ b: p.b, f: p.f, x: p.x });
 
-function vertical(b, from, to) {
+function vertical(b, from, to, exit = false) {
   if (from === to) return [];
+  if ((exit || b.alarm) && b.L.exit && to < from) { // a fire (or the alarm's going): never the lift; down the emergency stair, a floor at a time
+    const s = [{ t: 'walk', x: b.exitX() }];
+    for (let f = from; f > to; f--) s.push({ t: 'exitstairs', to: f - 1 });
+    return s;
+  }
   if (b.elevator) return [{ t: 'walk', x: b.elevX() }, { t: 'elev', to }];
   const s = [];
   for (let f = from; f !== to; f += Math.sign(to - from)) {
@@ -145,9 +150,9 @@ function vertical(b, from, to) {
 // Steps from `from` ({b, f}) to x on floor f of building b (b = null: outside on the street).
 // (A mixed-use block has two street doors: the shop's, and the residents' by the lobby. People use
 // whichever is nearer to where they're going.)
-export function route(from, b, f, x) {
+export function route(from, b, f, x, opts = {}) { // opts.exit: leave by the emergency stair (a fire)
   const s = [];
-  if (from.b && from.b !== b) { const d = from.b.doorFor(from.f, from.x ?? x); s.push(...vertical(from.b, from.f, 0), { t: 'walk', x: d }, { t: 'exit' }); }
+  if (from.b && from.b !== b) { const d = from.b.doorFor(from.f, from.x ?? x); s.push(...vertical(from.b, from.f, 0, opts.exit), { t: 'walk', x: d }, { t: 'exit' }); }
   if (b && from.b !== b) { const d = b.doorFor(f, x); s.push({ t: 'walk', x: d, door: true }, { t: 'enter', b }, ...vertical(b, 0, f)); }
   else if (b) s.push(...vertical(b, from.f, f));
   s.push({ t: 'walk', x });
@@ -273,7 +278,7 @@ function unpackPlan(p, w) {
   return steps;
 }
 
-// Shopping: browse a few aisles, then queue for the till (one at a time, the rest in a line behind)
+// Shopping: browse three to five aisles (a good look at each), then queue for the till (one at a time, the rest in a line behind)
 // and pay. Now and then someone pockets something and runs for it instead (see incidents.js).
 function shopping(p, w) {
   const shops = w.city.shops();
@@ -282,9 +287,9 @@ function shopping(p, w) {
   const inStore = (s) => b.L.rooms[s.room]?.kind === 'store';
   const browse = b.spots('browse').filter(inStore), pay = b.spots('pay').filter(inStore), steps = [];
   let from = here(p);
-  for (let i = 0; i < 2 + (p.seed % 2) && browse.length; i++) {
+  for (let i = 0; i < 3 + ((p.seed + w.day) % 3) && browse.length; i++) {
     const open = browse.filter((sp) => !claimed(p, sp)), s = (open.length ? open : browse)[(p.seed + i * 3 + w.day) % (open.length || browse.length)]; // an aisle nobody else is in
-    steps.push(...(i ? route(from, b, 0, b.x0 + s.x) : go(p, w, from, b, 0, b.x0 + s.x, 'shop')), { t: 'do', spot: s, mins: 3 + i });
+    steps.push(...(i ? route(from, b, 0, b.x0 + s.x) : go(p, w, from, b, 0, b.x0 + s.x, 'shop')), { t: 'do', spot: s, mins: 4 + i });
     from = { b, f: 0 };
   }
   if (!traits(p).honest && dice(p.seed, w.day, 13)() < 0.3) { // pocket something and leg it
@@ -377,7 +382,7 @@ function clinicPlan(p, w) { // a chair in the waiting room until the doctor's fr
 export function forcePlan(p, steps, tag) {
   if (p.surface === 'elev' && p.b) { p.f = Math.round(p.b.elevator.pos); p.y = p.b.feetY(p.f); p.surface = 'floor'; }
   const s0 = p.plan[0];
-  if (s0?.t === 'stairs' && s0.path && p.b) { p.f = s0.to; p.y = p.b.feetY(s0.to); }
+  if ((s0?.t === 'stairs' && s0.path || s0?.t === 'exitstairs' && s0.going) && p.b) { p.f = s0.to; p.y = p.b.feetY(s0.to); }
   if (p.surface === 'window' || p.surface === 'climb') fall(p);
   if (p.carry && p.cityRef) putDown(p, { city: p.cityRef });
   leaveVenue(p, p.cityRef || { lots: [] });
@@ -542,17 +547,18 @@ function doorAhead(p, x) {
   }
   return null;
 }
-// Walked through a doorway a few steps back: shut the door behind you, or leave it open. Front
-// doors are always shut, a bathroom door nearly always, a bedroom door at bedtime mostly; the rest
-// depends on the person (and nobody shuts a door in someone's face).
+// Walked through a doorway a few steps back: shut the door behind you, or leave it open. Most
+// doors get shut: a flat's front door always, a bathroom door nearly always, a bedroom door at
+// bedtime; the rest mostly, more or less depending on the person (and nobody shuts a door in
+// someone's face).
 function shouldClose(p, d) {
   const b = p.b, cx = b.x0 + d.x + 1;
   if (everyone.some((q) => q !== p && q.b === b && q.f === d.f && Math.abs(q.x - cx) < 10)) return false;
   const into = b.roomAt(p.f, p.x);
-  let k = habit(p).closeDoor * (b.type === 'office' ? 0.7 : 1);
-  if (d.style === 'front') k = 0.97;
-  else if (into?.kind === 'washroom') k = 0.95;
-  else if (p.plan.some((s) => s.act === 'sleep')) k = 0.85;
+  let k = (0.55 + 0.4 * habit(p).closeDoor) * (b.type === 'office' ? 0.85 : 1);
+  if (d.style === 'front') k = 1;
+  else if (into?.kind === 'washroom') k = 0.97;
+  else if (p.plan.some((s) => s.act === 'sleep') || ['bedroom', 'boss', 'meeting', 'hr'].includes(into?.kind)) k = Math.max(k, 0.9);
   return Math.random() < k;
 }
 const awakeIn = (p, b, r) => everyone.some((q) => q !== p && q.b === b && q.f === r.f && b.roomAt(q.f, q.x) === r && q.anim !== 'sleep');
@@ -764,6 +770,15 @@ function run(p, dt, w) {
       }
       p.phase += dt * 7; p.anim = 'stairs'; // one tread per step
       if (s.i >= s.path.length - 1) { p.f = s.to; done(p); }
+      return;
+    }
+    case 'exitstairs': { // the emergency stair, seen from the front: straight down it to the next floor
+      if (!p.b?.L.exit) return done(p);
+      s.going = true; p.x = p.b.exitX(); p.dir = 1;
+      const ty = p.b.feetY(s.to);
+      p.y = Math.min(ty, p.y + STAIRS * 0.8 * dt);
+      p.phase += dt * 7; p.anim = 'stairs';
+      if (p.y >= ty) { p.y = ty; p.f = s.to; done(p); }
       return;
     }
     case 'elev': {

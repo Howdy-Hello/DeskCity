@@ -19,7 +19,8 @@ import { drawVenue } from './venues.js';
 import { updateSocial, drawBubbles, forceTalk, isFriend, moodOf } from './social.js';
 import { updateLife, card as lifeCard, fullName } from './life.js';
 import { open as openPassport, setPassportActions, tickPassport, drawMarks, setHoverPerson, passportOf } from './passport.js';
-import { interactive } from './desktop.js';
+import { interactive, followCursor, overPanel, passThrough } from './desktop.js';
+import { dragging as panelDragging } from './panels.js';
 import { drawFireInside, drawFireOutside, drawBay, drawFleet, drawSmoke, drawHaze, startFire } from './incidents.js';
 
 // Browser testing options (they never touch your saved town):
@@ -113,7 +114,7 @@ const actions = {
     return true;
   },
   reset() { city.replace(null, clock.now()); if (!TEST) city.save(); }, // a brand-new town; the clock is left alone
-  info: () => ({ name: city.realty.name, cash: Math.round(city.realty.cash / 1e4) * 1e4, free: city.vacant.length, hunting: city.hunters.length, people: city.people.length, full: city.isFull(), dev: devInfo() }),
+  info: () => ({ name: city.realty.name, cash: Math.round(city.realty.cash / 1e4) * 1e4, free: city.vacant.length, hunting: city.hunters.length, people: city.people.length, full: city.isFull(), built: city.open, hidden: city.lots.some((b) => b && b.x0 >= Math.max(1, desktop.spaces) * W), dev: devInfo() }), // (built: desktops grown onto; hidden: some of it is on a closed desktop)
 };
 // ---------- the developer's panel (see devpanel.js) ----------
 const pickAdult = (ok = () => true) => { const list = city.people.filter((p) => !p.kid && !p.forced && !p.aboard && !p.inCar && p.surface !== 'elev' && p.surface !== 'air' && ok(p)); return list[Math.floor(Math.random() * list.length)]; };
@@ -230,8 +231,9 @@ function openSomeone() { // OPEN in settings: someone on this desktop
 actions.passport = openSomeone;
 // Click someone in town (only while the town is taking clicks: a panel's open) for their passport.
 let paintT = -1;
-function personAt(e) {
-  const x = e.clientX / ZOOM + deskIndex() * W, y = e.clientY / ZOOM;
+const personAt = (e) => personAtXY(e.clientX, e.clientY);
+function personAtXY(cx, cy) { // (screen points)
+  const x = cx / ZOOM + deskIndex() * W, y = cy / ZOOM;
   let best = null, bd = 6;
   for (const p of city.people) {
     if (p.headT !== paintT || p.aboard || p.inCar) continue;
@@ -271,7 +273,7 @@ if (!TEST && LEADER) {
   addEventListener('beforeunload', () => city.save());
 }
 
-let last = performance.now(), lastNow = null, lastW = null, tShift = 0; // tShift: test runs skip ahead
+let last = performance.now(), lastNow = null, lastW = null, tShift = 0, simTick = 0; // tShift: test runs skip ahead
 // Developer speed: paused, the clock and every animation stand still; faster, the town runs several
 // steps per frame (the clock, people, cars, lifts and animations all together), drawing the last.
 function loop(ms) {
@@ -325,8 +327,20 @@ function step(ms, draw = true, sim = true) {
   let t = performance.now();
   if (LEADER && sim) {
     city.update(w);
-    for (const b of city.lots) b?.elevator?.update(dt);
-    for (const p of city.people) updatePerson(p, dt, w);
+    // The part of the street no desktop's window shows (a desktop that's been closed) carries on, but
+    // cheaply: its people move a quarter as often, in bigger steps. In potato mode it waits for you.
+    const seenTo = Math.max(1, desktop.spaces) * W, hiddenLot = (b) => !!b && b.x0 >= seenTo;
+    simTick++;
+    for (const b of city.lots) {
+      if (!b || (hiddenLot(b) && (prefs.potato || simTick % 4))) continue;
+      b.elevator?.update(hiddenLot(b) ? dt * 4 : dt); b.easeDoors(); b.updateStreetDoors(city.people);
+    }
+    for (const p of city.people) {
+      if (p.forced || !(p.b ? hiddenLot(p.b) : p.x >= seenTo)) { updatePerson(p, dt, w); continue; } // (an emergency always runs at full speed)
+      if (prefs.potato) continue;
+      p.lagDt = (p.lagDt || 0) + dt;
+      if ((simTick + p.id) % 4 === 0) { updatePerson(p, Math.min(p.lagDt, 0.4), w); p.lagDt = 0; }
+    }
     updateSocial(city, w);
     updateLife(city, w);
   }
@@ -347,6 +361,8 @@ function step(ms, draw = true, sim = true) {
   tickSettings();
   tickDev();
   tickPassport(w.t);
+  followCursor(prefs.view === 'hover' || (!!tauri && interactive()));
+  if (tauri && interactive()) { const c = desktop.cursor; passThrough(!!c && !panelDragging() && !overPanel(c.x, c.y) && !personAtXY(c.x, c.y)); } // clicks off the panels go to your apps
   if (!LEADER && info?.dev) dev.speed = info.dev.speed;
   paint(ctx, { ...w, view: deskIndex() * W }, inside, true);
   time('draw', t);
@@ -374,10 +390,18 @@ function paint(c, w, inside, isLive) {
   drawStreetBack(c, city, G, seen); // trees and parks behind the buildings
   drawGarages(c, city, seen, H, night); // car parks under the big buildings
   drawCars(c, city, seen, w.t, night, 'under');
+  // Which buildings show their insides (the view setting): while someone's in (auto), never, always,
+  // or the one you're pointing at, unless another app's window is in the way. Always in x-ray.
+  const mode = prefs.view || 'auto', pt = mode === 'hover' && desktop.cursor && { x: desktop.cursor.x / ZOOM, y: desktop.cursor.y / ZOOM };
+  const pointed = pt && !desktop.windows.some((v) => pt.x >= v.x && pt.x < v.x + v.w && pt.y >= v.y && pt.y < v.y + v.h)
+    && city.lots.find((b) => b && pt.x + view >= b.x0 - b.L.ox && pt.x + view < b.x0 + b.L.w && pt.y >= b.G - b.L.H && pt.y <= G);
   for (const b of city.lots) {
     if (!b || !seen(b.x0 - b.L.ox, b.x0 + b.L.w)) continue;
     const here = inside.get(b) ?? [];
-    if (isLive) b.reveal += ((here.length || dev.xray ? 1 : 0) - b.reveal) * (dev.xray ? 1 : 0.1); // the outside fades away while someone is in (or always, in x-ray)
+    if (isLive) {
+      b.revealTo = dev.xray || mode === 'inside' ? 1 : mode === 'outside' ? 0 : mode === 'hover' ? +(b === pointed) : +!!here.length;
+      b.reveal += (b.revealTo - b.reveal) * (dev.xray ? 1 : 0.1); // the outside fades away
+    }
     b.draw(c, here, (p) => drawPerson(c, p, w.t), w);
   }
   drawGarageSigns(c, city, seen);

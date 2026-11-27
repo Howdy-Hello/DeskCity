@@ -17,13 +17,14 @@ Quit it from the Dock, or the tray / menu bar icon (the town itself lets clicks 
 
 ## Settings
 
-Press **Control+Option+D** (Ctrl+Alt+D on Windows), click DeskCity's Dock icon, or pick Settings… from the tray menu. While it's open the town comes up above your windows; press the shortcut again, Esc, or click anywhere else to close.
+Press **Control+Option+D** (Ctrl+Alt+D on Windows), click DeskCity's Dock icon, or pick Settings… from the tray menu. While it's open the town comes up above your windows, but clicks anywhere off the panel (except on someone in town) still go to your apps. Panels close only with their X, Esc or Cmd+W (the one on top first), or the shortcut again; clicking elsewhere leaves them open. Like any window, the panel (and the developer's panel and passports) can be moved by its title bar and resized from the grip in its bottom-right corner; double-click the title bar to put it back. Each remembers where you left it.
 
 - **Town time**: the day of the week and the time; nudge the clock by 10 minutes or an hour, or match it back to the real clock.
 - **Length of a day**: from 24 hours (real time) down to 1 hour, so a whole town day can go by in an hour.
 - **Potato mode**: for slower computers. Desktops you're not looking at redraw twice a second instead of 30 times, and decorative light (sunbeams, shadows, window halos) is switched off. Everything else is the same.
 - **Speech bubbles**: what people say to each other (and think to themselves) over their heads. On by default.
 - **Passports**: OPEN shows someone's passport. While any panel's open you can also just click anyone in town. It shows their name, age and birthday, household, job, what they're doing, their needs (energy, food, fun, social, hygiene, health) and mood, a calendar of their week, today's to-do list and work, the people they know, and their diary.
+- **View**: when buildings show their insides. **Auto** (the default): while someone's in. **Outside**: never, just the fronts (lit windows at night). **Inside**: always, every building cut away. **Hover**: only the building you point at (not when another app's window covers it).
 - **Saved towns**: three save slots. Save keeps the whole town plus its time and day length; Load brings it back. The town also saves itself automatically every 30 seconds.
 - **Start a new town**: click twice to confirm. Your save slots are kept.
 - **DEV** (top right): the developer's panel: speed everything up (or pause), x-ray, labels and stats overlays, jump the time, make things happen (move-ins, fires, thefts, fights, flu, ambulances, protests, a chat, an argument, gossip, a phone call) and the town's numbers.
@@ -52,7 +53,8 @@ git tag v0.1.0 && git push --tags
 
 - `src/furniture.js`: every piece of furniture and wall decoration, and which rooms get what.
 - `src/buildings.js`: building types and sizes, room layouts, the three drawing layers, stairs and elevators.
-- `src/styles.js`: the designs each size of building comes in: walls, windows, doors, roofs and interior looks.
+- `src/styles.js`: the designs each size of building comes in (shops and restaurants too): walls, windows, doors, roofs, shop fronts and interior looks.
+- `src/panels.js`: moving and resizing the settings panel, the developer's panel and passports like windows.
 - `src/stickman.js`: the stick figure's skeleton and all its animations.
 - `src/routine.js`: the week, everyone's habits, job shifts, and each person's plan for the day.
 - `src/people.js`: getting around (at their own pace), doing things, and climbing on your windows.

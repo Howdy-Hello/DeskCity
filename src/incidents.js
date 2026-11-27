@@ -78,11 +78,11 @@ function evacuate(city, w, b, who) {
     if (p.b !== b || p.forced || p.aboard || p.jail) continue;
     if (traits(p).lazy && !p.kid) continue; // can't be bothered
     const side = p.seed % 2 ? -1 : 1, gx = side < 0 ? b.x0 - b.L.ox - 8 - (p.seed % 36) : b.x0 + b.L.w + 8 + (p.seed % 36);
-    const out = [...route(here(p), null, 0, gx), { t: 'hold', anim: p.seed % 3 ? 'look' : 'wait', face: b.x0 + b.L.w / 2, while: () => !!b.alarm }];
+    const out = [...route(here(p), null, 0, gx, { exit: true }), { t: 'hold', anim: p.seed % 3 ? 'look' : 'wait', face: b.x0 + b.L.w / 2, while: () => !!b.alarm }]; // (down the emergency stair, where there is one)
     if (p === who && fire.real && Math.random() < 0.2) p.hurtLater = 2; // a burnt hand
     if (p === who && fire.real && Math.random() < 0.6) { // grab the extinguisher first
       const fx = b.x0 + fire.x, dir = p.x < fx ? 1 : -1;
-      forcePlan(p, [...route(here(p), b, fire.f, fx - dir * 7), { t: 'spray', b, tool: 'extinguisher', secs: 4 + Math.random() * 3 }, ...route({ b, f: fire.f }, null, 0, gx), out[out.length - 1]], 'evac');
+      forcePlan(p, [...route(here(p), b, fire.f, fx - dir * 7), { t: 'spray', b, tool: 'extinguisher', secs: 4 + Math.random() * 3 }, ...route({ b, f: fire.f }, null, 0, gx, { exit: true }), out[out.length - 1]], 'evac');
     } else forcePlan(p, out, 'evac');
   }
 }

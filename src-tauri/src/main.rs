@@ -43,6 +43,21 @@ fn desktop_state(window: WebviewWindow) -> DesktopState {
     DesktopState { windows, ground, space, spaces, fullscreen }
 }
 
+/// Where the mouse pointer is, in this window's coordinates (the town lets clicks through, so it never
+/// sees the mouse itself). For showing a building's inside while you point at it.
+#[tauri::command]
+fn cursor(window: WebviewWindow) -> Option<(f64, f64)> {
+    let scale = window.scale_factor().unwrap_or(1.0);
+    let pos = window.outer_position().ok()?;
+    let c = window.cursor_position().ok()?;
+    Some(((c.x - pos.x as f64) / scale, (c.y - pos.y as f64) / scale))
+}
+
+/// While a panel's open: let clicks through to the apps underneath (the pointer's not on a panel or
+/// on someone in town) or take them, without moving the window up or down a layer.
+#[tauri::command]
+fn set_passthrough(window: WebviewWindow, on: bool) { let _ = window.set_ignore_cursor_events(on); }
+
 /// While the settings panel is open, the town comes up above your windows and takes clicks and keys.
 /// Closed, it goes back to the desktop layer and lets everything through.
 #[tauri::command]
@@ -230,7 +245,7 @@ fn main() {
                 })
                 .build(),
         )
-        .invoke_handler(tauri::generate_handler![desktop_state, set_interactive, my_desk, note])
+        .invoke_handler(tauri::generate_handler![desktop_state, set_interactive, my_desk, note, cursor, set_passthrough])
         .setup(move |app| {
             let win = app.get_webview_window("main").unwrap();
 

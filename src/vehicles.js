@@ -151,8 +151,10 @@ export class Vehicle {
     if (Math.abs(dx) > 0.3 && Math.sign(dx) !== this.dir) { this.speed = 0; this.turnT = TURN; this.slope = 0; return; }
     // Brake for the last point, or for one where the road doubles back.
     const next = this.path[1], reverses = next && Math.sign(next.x - q.x) === -Math.sign(dx) && Math.abs(next.x - q.x) > 0.3;
-    const limit = Math.abs(dy) > 0.3 ? RAMP : DRIVE, stop = !next || reverses ? Math.max(3, Math.sqrt(2 * BRAKE * d)) : Infinity;
-    this.speed = Math.min(limit, this.speed + ACCEL * dt, stop);
+    // Siren on: an emergency run (fire engine, ambulance, police car): over twice as fast, quicker off the mark and harder on the brakes.
+    const rush = this.siren === true ? 2.3 : 1;
+    const limit = (Math.abs(dy) > 0.3 ? RAMP : DRIVE) * rush, stop = !next || reverses ? Math.max(3, Math.sqrt(2 * BRAKE * rush * d)) : Infinity;
+    this.speed = Math.min(limit, this.speed + ACCEL * rush * dt, stop);
     const step = Math.min(d, this.speed * dt);
     this.x += (dx / d) * step; this.y += (dy / d) * step; this.odo += step;
     this.slope = Math.abs(dx) > 0.3 ? dy / dx : 0;
