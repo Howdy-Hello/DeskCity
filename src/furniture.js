@@ -9,13 +9,13 @@ import { rng, pick, shade } from './draw.js';
 // assembly-service data: beds 1-2.5 h, wardrobes 1-5 h, bookcases under 1 h, small pieces ~40 min).
 // Everything else (kitchen appliances, toilets, sinks, showers, office and shop fittings) is built in.
 export const FLATPACK = {
-  bed: ['l', 100], bed2: ['l', 130], wardrobe: ['l', 150], dresser: ['m', 60], nightstand: ['s', 25], bookshelf: ['m', 50],
-  sofa: ['l', 15], armchair: ['m', 10], tv: ['m', 20], table: ['m', 40], lamp: ['s', 15], plant: ['s', 5],
-  pcdesk: ['m', 60], laptopdesk: ['s', 30], planter: ['m', 30], seedlings: ['m', 25], treadmill: ['l', 45], weightbench: ['m', 35], bistro: ['s', 15],
+  bed: ['l', 30], bed2: ['l', 40], wardrobe: ['l', 45], dresser: ['m', 20], nightstand: ['s', 8], bookshelf: ['m', 15],
+  sofa: ['l', 5], armchair: ['m', 4], tv: ['m', 6], table: ['m', 12], lamp: ['s', 5], plant: ['s', 2],
+  pcdesk: ['m', 20], laptopdesk: ['s', 10], kiddesk: ['m', 10], toybox: ['s', 3], planter: ['m', 10], seedlings: ['m', 8], treadmill: ['l', 15], weightbench: ['m', 12], bistro: ['s', 5],
 };
 export const BOX = { s: [5, 4], m: [7, 6], l: [10, 7] };
 // Which flat-pack to open first.
-export const UNPACK_ORDER = ['bed2', 'bed', 'table', 'sofa', 'tv', 'armchair', 'nightstand', 'pcdesk', 'laptopdesk', 'wardrobe', 'dresser', 'bookshelf', 'lamp', 'bistro', 'planter', 'seedlings', 'treadmill', 'weightbench', 'plant'];
+export const UNPACK_ORDER = ['bed2', 'bed', 'kiddesk', 'toybox', 'table', 'sofa', 'tv', 'armchair', 'nightstand', 'pcdesk', 'laptopdesk', 'wardrobe', 'dresser', 'bookshelf', 'lamp', 'bistro', 'planter', 'seedlings', 'treadmill', 'weightbench', 'plant'];
 
 const C = {
   wood: '#a0693a', woodDark: '#6e4423', woodLight: '#c99a62',
@@ -252,7 +252,7 @@ export const FURNITURE = {
     },
   },
   reception: {
-    w: 16, h: 14, spots: [{ act: 'front', dx: 8, dir: -1 }], screen: { dx: 10, dy: -13, w: 5, h: 3, app: 'saver', always: true },
+    w: 16, h: 14, spots: [{ act: 'front', dx: 8, dir: -1, behind: true }], screen: { dx: 10, dy: -13, w: 5, h: 3, app: 'saver', always: true },
     draw(p, x, y, it) {
       p.rect(x, y - 8, 16, 9, '#e6e1d6'); p.rect(x - 1, y - 9, 18, 1, C.woodDark); p.rect(x + 2, y - 5, 12, 2, it.color);
       p.rect(x + 9, y - 14, 7, 5, C.black); p.rect(x + 10, y - 13, 5, 3, C.screen);
@@ -378,7 +378,7 @@ export const FURNITURE = {
     },
   },
   checkout: {
-    w: 16, h: 12, spots: [{ act: 'pay', dx: 5, dir: 1 }],
+    w: 16, h: 12, spots: [{ act: 'pay', dx: 5, dir: 1 }, { act: 'work', role: 'cashier', dx: 13, dir: -1, anim: 'stand', behind: true }],
     draw(p, x, y) {
       p.rect(x, y - 7, 16, 8, '#6d7b8a'); p.rect(x + 1, y - 8, 10, 1, C.black);
       p.rect(x + 11, y - 12, 5, 4, '#333'); p.rect(x + 12, y - 11, 3, 1, '#7CFC00'); p.rect(x + 3, y - 10, 3, 2, '#f5deb3');
@@ -390,12 +390,306 @@ export const FURNITURE = {
   },
 };
 
+
+// ---------- new in Chapter 2: shops, restaurants, pubs, schools, stations, factories, gyms ----------
+const stool = (p, x, y, col = C.metalDark) => { p.rect(x, y - 6, 4, 1, '#7a2e2e'); p.rect(x + 1, y - 5, 1, 6, col); p.rect(x, y, 3, 1, col); };
+Object.assign(FURNITURE, {
+  // shop: medicine and toiletries
+  pharmacy: {
+    w: 12, h: 18, spots: [{ act: 'browse', dx: 6, dir: 1 }],
+    draw(p, x, y, it, r) {
+      p.rect(x, y - 15, 12, 16, C.white); p.frame(x, y - 15, 12, 16, C.offwhite);
+      p.rect(x + 4, y - 18, 4, 1, '#27ae60'); p.rect(x + 5, y - 19, 2, 3, '#27ae60'); // green cross
+      for (let s = y - 13; s <= y; s += 4) { p.rect(x + 1, s + 3, 10, 1, C.offwhite); for (let i = 1; i < 11; i += 2) if (r() > 0.2) p.rect(x + i, s + 1, 2, 2, pick(r, ['#ffffff', '#5dade2', '#ec7063', '#f7dc6f', '#58d68d'])); }
+    },
+  },
+  // restaurant: tables, the pass, the kitchen, the till
+  dinetable: {
+    w: 16, h: 10, spots: [{ act: 'dine', dx: 2, hip: 5, dir: 1 }, { act: 'dine', dx: 13, hip: 5, dir: -1 }],
+    draw(p, x, y, it) {
+      chair(p, x, y, false); chair(p, x + 12, y, true);
+      p.rect(x + 4, y - 7, 8, 1, C.white); p.rect(x + 4, y - 6, 8, 2, it.color); p.rect(x + 7, y - 4, 2, 5, C.woodDark);
+      p.px(x + 8, y - 8, '#f1c40f'); // a candle
+    },
+  },
+  longtable: {
+    w: 26, h: 10, spots: [{ act: 'dine', dx: 2, hip: 5, dir: 1 }, { act: 'dine', dx: 7, hip: 5, dir: 1 }, { act: 'dine', dx: 19, hip: 5, dir: -1 }, { act: 'dine', dx: 24, hip: 5, dir: -1 }],
+    draw(p, x, y, it) {
+      chair(p, x, y, false); chair(p, x + 22, y, true);
+      p.rect(x + 5, y - 4, 4, 1, C.woodDark); p.rect(x + 6, y - 3, 1, 4, C.woodDark); p.rect(x + 17, y - 4, 4, 1, C.woodDark); p.rect(x + 19, y - 3, 1, 4, C.woodDark); // stools
+      p.rect(x + 4, y - 7, 18, 1, C.white); p.rect(x + 4, y - 6, 18, 2, it.color); p.rect(x + 6, y - 4, 1, 5, C.woodDark); p.rect(x + 19, y - 4, 1, 5, C.woodDark);
+    },
+  },
+  pass: { // where plates wait under the heat lamp for a waiter
+    w: 14, h: 18, spots: [{ act: 'work', role: 'waiter', dx: 3, dir: -1, anim: 'stand' }, { act: 'work', role: 'waiter', dx: 10, dir: -1, anim: 'stand' }],
+    draw(p, x, y) {
+      p.rect(x, y - 8, 14, 9, '#b9c0c6'); p.rect(x, y - 9, 14, 1, '#7d858c'); p.rect(x + 1, y - 6, 12, 1, '#9aa2a9');
+      p.rect(x + 2, y - 18, 10, 2, '#555'); p.rect(x + 3, y - 16, 8, 1, '#ffb347'); // heat lamp
+    },
+  },
+  grill: {
+    w: 14, h: 22, spots: [{ act: 'work', role: 'chef', dx: 7, dir: 1, anim: 'cook' }],
+    draw(p, x, y) {
+      p.rect(x, y - 8, 14, 9, C.metal); p.rect(x + 1, y - 6, 12, 5, C.black); p.rect(x, y - 9, 14, 1, C.metalDark);
+      for (let k = 1; k < 13; k += 3) p.rect(x + k, y - 10, 2, 1, '#333');
+      p.rect(x + 2, y - 12, 4, 2, C.metalDark); p.rect(x + 8, y - 11, 5, 1, '#333'); // a pot and a pan
+      p.rect(x, y - 22, 14, 4, C.metal); p.rect(x + 1, y - 18, 12, 1, C.metalDark); // hood
+    },
+  },
+  prep: {
+    w: 12, h: 12, spots: [{ act: 'work', role: 'chef', dx: 5, dir: 1, anim: 'chop' }],
+    draw(p, x, y) {
+      p.rect(x, y - 8, 12, 9, '#c8ced3'); p.rect(x, y - 8, 12, 1, '#e8ecef'); p.rect(x + 1, y - 2, 10, 1, '#9aa2a9');
+      p.rect(x + 3, y - 9, 5, 1, C.woodLight); p.px(x + 4, y - 10, '#e74c3c'); p.px(x + 6, y - 10, '#27ae60'); // chopping board
+      p.rect(x + 1, y - 13, 10, 1, C.metalDark); for (let k = 2; k < 11; k += 3) p.rect(x + k, y - 12, 1, 2, C.metal); // utensil rail
+    },
+  },
+  till: {
+    w: 9, h: 13, spots: [{ act: 'pay', dx: 1, dir: 1 }, { act: 'servetill', dx: 6, dir: -1, behind: true }],
+    draw(p, x, y, it) { p.rect(x + 2, y - 7, 7, 8, C.woodDark); p.rect(x + 2, y - 8, 7, 1, C.wood); p.rect(x + 4, y - 11, 4, 3, '#333'); p.rect(x + 5, y - 10, 2, 1, '#7CFC00'); p.rect(x + 3, y - 4, 5, 1, it.color); },
+  },
+  cafecounter: { // espresso machine, cake display, the barista behind it
+    w: 20, h: 16, spots: [{ act: 'pay', dx: 2, dir: 1 }, { act: 'work', role: 'chef', dx: 12, dir: -1, anim: 'pour', behind: true }],
+    draw(p, x, y, it) {
+      p.rect(x + 4, y - 7, 12, 8, C.woodDark); p.rect(x + 3, y - 8, 14, 1, C.woodLight);
+      p.rect(x + 5, y - 6, 6, 4, '#dff3fb'); p.px(x + 6, y - 4, '#e8b4b8'); p.px(x + 8, y - 4, '#8b5a2b'); p.px(x + 9, y - 5, '#f7dc6f'); // cakes
+      p.rect(x + 12, y - 13, 4, 5, C.metal); p.rect(x + 13, y - 12, 2, 1, C.black); p.px(x + 13, y - 9, C.white); // espresso machine
+    },
+  },
+  // pub: the bar, high tables, a jukebox
+  barcounter: {
+    w: 30, h: 18, spots: [{ act: 'drink', dx: 2, hip: 7, dir: 1, anim: 'drink' }, { act: 'drink', dx: 8, hip: 7, dir: 1, anim: 'drink' }, { act: 'work', role: 'bartender', dx: 18, dir: -1, anim: 'wipe', behind: true }],
+    draw(p, x, y) {
+      stool(p, x, y); stool(p, x + 6, y);
+      p.rect(x + 11, y - 9, 11, 10, '#5a3420'); p.rect(x + 10, y - 10, 13, 1, '#8b5a2b'); p.rect(x + 12, y - 7, 9, 1, '#6e4423');
+      for (const k of [13, 16, 19]) { p.rect(x + k, y - 13, 1, 3, C.metal); p.px(x + k, y - 14, '#f1c40f'); } // beer taps
+      p.rect(x + 26, y - 17, 4, 18, '#4a2a18'); for (let s = y - 15; s < y; s += 5) { p.rect(x + 26, s + 3, 4, 1, '#6e4423'); p.px(x + 27, s + 1, '#27ae60'); p.px(x + 28, s + 2, '#c0392b'); p.px(x + 29, s + 1, '#f1c40f'); } // back shelf
+    },
+  },
+  pubtable: {
+    w: 14, h: 12, spots: [{ act: 'drink', dx: 2, hip: 6, dir: 1, anim: 'drink' }, { act: 'drink', dx: 11, hip: 6, dir: -1, anim: 'drink' }],
+    draw(p, x, y) { stool(p, x, y); stool(p, x + 10, y); p.rect(x + 4, y - 9, 6, 1, '#8b5a2b'); p.rect(x + 6, y - 8, 2, 8, '#4a2a18'); p.rect(x + 5, y, 4, 1, '#4a2a18'); },
+  },
+  jukebox: {
+    w: 7, h: 13, spots: [],
+    draw(p, x, y) { p.rect(x, y - 10, 7, 11, '#8e44ad'); p.rect(x + 1, y - 12, 5, 2, '#8e44ad'); p.rect(x + 1, y - 9, 5, 4, '#f5cba7'); p.rect(x + 1, y - 4, 5, 1, '#f1c40f'); p.rect(x + 2, y - 2, 3, 2, '#2c3e50'); },
+  },
+  // school
+  schooldesk: {
+    w: 10, h: 9, spots: [{ act: 'learn', dx: 8, hip: 4, dir: -1, anim: 'learn' }],
+    draw(p, x, y, it) {
+      p.rect(x, y - 6, 6, 1, C.woodLight); p.rect(x + 1, y - 5, 1, 6, C.metalDark); p.rect(x + 4, y - 5, 1, 6, C.metalDark); p.px(x + 2, y - 7, C.white);
+      p.rect(x + 7, y - 3, 3, 1, it.color); p.rect(x + 9, y - 7, 1, 8, it.color); p.rect(x + 7, y - 2, 1, 3, C.metalDark); // chair
+    },
+  },
+  teacherdesk: {
+    w: 14, h: 11, spots: [{ act: 'work', role: 'teacher', dx: 3, dir: 1, anim: 'teach' }, { act: 'mark', dx: 2, hip: 5, dir: 1, anim: 'mark' }],
+    draw(p, x, y) {
+      chair(p, x, y, false);
+      p.rect(x + 5, y - 7, 9, 1, C.woodDark); p.rect(x + 6, y - 6, 7, 7, C.wood); p.px(x + 7, y - 8, '#e74c3c'); p.rect(x + 9, y - 8, 3, 1, C.white); // an apple, some papers
+    },
+  },
+  slide: {
+    w: 18, h: 18, spots: [{ act: 'play', dx: 3, dir: 1, anim: 'slide' }],
+    draw(p, x, y) {
+      p.rect(x + 1, y - 16, 1, 17, '#e74c3c'); p.rect(x + 4, y - 16, 1, 17, '#e74c3c'); for (let k = y - 14; k < y; k += 3) p.rect(x + 1, k, 4, 1, '#f1c40f'); // ladder
+      p.rect(x + 1, y - 17, 5, 1, '#3498db');
+      p.line(x + 5, y - 16, x + 17, y - 1, '#3498db'); p.line(x + 5, y - 15, x + 17, y, '#2e86c1'); // the slide
+    },
+  },
+  swings: {
+    w: 16, h: 20, spots: [{ act: 'play', dx: 4, hip: 7, dir: 1, anim: 'swing' }, { act: 'play', dx: 11, hip: 7, dir: -1, anim: 'swing' }],
+    draw(p, x, y) { p.line(x, y, x + 3, y - 19, '#d35400'); p.line(x + 15, y, x + 12, y - 19, '#d35400'); p.rect(x + 2, y - 19, 12, 1, '#d35400'); },
+  },
+  sandbox: {
+    w: 12, h: 5, spots: [{ act: 'play', dx: 6, dir: 1, anim: 'dig' }],
+    draw(p, x, y) { p.rect(x, y - 2, 12, 3, '#f0d9a0'); p.rect(x, y - 3, 1, 4, C.wood); p.rect(x + 11, y - 3, 1, 4, C.wood); p.px(x + 3, y - 3, '#e74c3c'); p.px(x + 4, y - 3, '#e74c3c'); },
+  },
+  kiddesk: {
+    w: 10, h: 12, spots: [{ act: 'homework', dx: 2, hip: 4, dir: 1, anim: 'learn' }],
+    draw(p, x, y, it) { p.rect(x, y - 3, 3, 1, it.color); p.rect(x, y - 2, 1, 3, it.color); p.rect(x + 3, y - 6, 7, 1, C.woodLight); p.rect(x + 9, y - 5, 1, 6, C.wood); p.rect(x + 7, y - 9, 1, 3, C.metalDark); p.px(x + 6, y - 9, C.lamp); },
+  },
+  toybox: {
+    w: 7, h: 7, spots: [{ act: 'play', dx: 3, dir: 1, anim: 'dig' }],
+    draw(p, x, y, it) { p.rect(x, y - 4, 7, 5, it.color); p.rect(x, y - 4, 7, 1, shade(it.color, 0.8)); p.px(x + 1, y - 5, '#f1c40f'); p.px(x + 4, y - 6, '#e74c3c'); p.px(x + 5, y - 5, '#3498db'); },
+  },
+  // gym equipment
+  bike: {
+    w: 10, h: 11, spots: [{ act: 'exercise', dx: 3, hip: 7, dir: 1, anim: 'bike' }],
+    draw(p, x, y) { p.rect(x, y, 10, 1, C.black); p.rect(x + 3, y - 6, 1, 6, C.metalDark); p.rect(x + 1, y - 7, 4, 1, C.black); p.line(x + 4, y - 3, x + 8, y - 9, C.metalDark); p.rect(x + 7, y - 10, 3, 1, C.black); p.rect(x + 5, y - 4, 3, 3, '#c0392b'); },
+  },
+  dumbbells: {
+    w: 10, h: 9, spots: [{ act: 'exercise', dx: 4, dir: 1, anim: 'lift' }],
+    draw(p, x, y) { p.rect(x, y - 6, 10, 1, C.metalDark); p.rect(x + 1, y - 5, 1, 6, C.metalDark); p.rect(x + 8, y - 5, 1, 6, C.metalDark); for (const k of [2, 5]) { p.rect(x + k, y - 8, 1, 2, C.black); p.rect(x + k + 2, y - 8, 1, 2, C.black); p.rect(x + k, y - 7, 3, 1, C.metal); } },
+  },
+  // fire station
+  gearrack: {
+    w: 12, h: 17, spots: [],
+    draw(p, x, y) { p.rect(x, y - 16, 12, 1, C.metalDark); for (const k of [1, 5, 9]) { p.rect(x + k, y - 15, 2, 2, '#f1c40f'); p.rect(x + k - 1, y - 13, 4, 9, '#c9a227'); p.rect(x + k - 1, y - 9, 4, 1, '#d5d8dc'); } p.rect(x, y - 2, 12, 3, C.metalDark); },
+  },
+  bunkbed: {
+    w: 22, h: 18, spots: [{ act: 'nap', dx: 12, hip: 3, lie: true, dir: 1, anim: 'sleep' }, { act: 'nap', dx: 12, hip: 12, lie: true, dir: 1, anim: 'sleep' }],
+    draw(p, x, y, it) {
+      p.rect(x, y - 17, 1, 18, C.metalDark); p.rect(x + 21, y - 17, 1, 18, C.metalDark);
+      p.rect(x + 1, y - 2, 20, 2, C.white); p.rect(x + 8, y - 3, 13, 1, it.color); p.rect(x + 1, y - 11, 20, 2, C.white); p.rect(x + 8, y - 12, 13, 1, it.color);
+      p.rect(x + 1, y - 9, 20, 1, C.metalDark); p.rect(x + 1, y, 20, 1, C.metalDark);
+    },
+  },
+  crewcouch: {
+    w: 16, h: 9, spots: [{ act: 'work', role: 'firefighter', dx: 6, hip: 6, dir: 1, anim: 'tv' }, { act: 'work', role: 'firefighter', dx: 10, hip: 6, dir: 1, anim: 'tv' }],
+    draw(p, x, y) { p.rect(x, y - 4, 16, 4, '#922b21'); p.rect(x, y - 9, 3, 9, '#641e16'); p.rect(x + 13, y - 6, 3, 6, '#641e16'); },
+  },
+  crewtable: {
+    w: 18, h: 10, spots: [{ act: 'work', role: 'firefighter', dx: 2, hip: 5, dir: 1, anim: 'talkSit' }, { act: 'work', role: 'firefighter', dx: 15, hip: 5, dir: -1, anim: 'eat' }],
+    draw(p, x, y) { chair(p, x, y, false, C.metalDark); chair(p, x + 14, y, true, C.metalDark); p.rect(x + 4, y - 7, 10, 1, C.woodLight); p.rect(x + 8, y - 6, 2, 7, C.metalDark); p.rect(x + 6, y - 8, 2, 1, C.white); },
+  },
+  // police station
+  frontdesk: {
+    w: 18, h: 14, spots: [{ act: 'work', role: 'officer', dx: 8, dir: -1, anim: 'stand', behind: true }],
+    draw(p, x, y) { p.rect(x, y - 9, 12, 10, '#5d6d7e'); p.rect(x - 1, y - 10, 14, 1, '#2c3e50'); p.rect(x + 3, y - 7, 6, 3, '#f1c40f'); p.rect(x + 4, y - 6, 4, 1, '#2c3e50'); p.rect(x + 8, y - 13, 4, 3, C.black); },
+  },
+  cell: {
+    w: 18, h: 24, spots: [{ act: 'jail', dx: 8, hip: 5, dir: 1, anim: 'jail' }],
+    draw(p, x, y) {
+      p.rect(x + 2, y - 5, 12, 1, C.metal); p.rect(x + 3, y - 4, 1, 5, C.metalDark); p.rect(x + 12, y - 4, 1, 5, C.metalDark); // bench
+      p.rect(x, y - 24, 18, 1, '#555'); for (let k = x; k < x + 18; k += 3) p.rect(k, y - 23, 1, 24, '#6f767d'); // bars, in front
+    },
+  },
+  copdesk: {
+    w: 18, h: 13, spots: [{ act: 'work', role: 'officer', dx: 2, hip: 5, dir: 1 }], screen: { dx: 9, dy: -12, w: 7, h: 4 },
+    draw(p, x, y) { FURNITURE.desk.draw(p, x, y); p.px(x + 7, y - 8, '#2c3e50'); },
+  },
+  // factory
+  press: {
+    w: 14, h: 22, spots: [{ act: 'work', role: 'worker', dx: 12, dir: -1, anim: 'operate' }],
+    draw(p, x, y) {
+      p.rect(x, y - 21, 10, 3, '#5d6d7e'); p.rect(x, y - 18, 2, 18, '#5d6d7e'); p.rect(x + 8, y - 18, 2, 18, '#5d6d7e');
+      p.rect(x + 2, y - 4, 6, 4, '#34495e'); p.rect(x + 1, y - 21, 1, 1, '#f1c40f'); for (let k = 0; k < 10; k += 2) p.px(x + k, y - 18, '#f1c40f'); // hazard stripes
+    },
+  },
+  conveyor: {
+    w: 40, h: 9, spots: [{ act: 'work', role: 'worker', dx: 10, dir: 1, anim: 'operate' }, { act: 'work', role: 'worker', dx: 28, dir: 1, anim: 'operate' }],
+    draw(p, x, y) {
+      p.rect(x, y - 7, 40, 2, '#2c2c30'); p.rect(x, y - 8, 40, 1, '#55555c');
+      for (let k = 2; k < 40; k += 9) { p.rect(x + k, y - 5, 1, 6, C.metalDark); }
+      for (let k = 0; k < 40; k += 3) p.px(x + k, y - 6, '#4a4a50');
+    },
+  },
+  workbench: {
+    w: 16, h: 14, spots: [{ act: 'work', role: 'worker', dx: 7, dir: 1, anim: 'chop' }],
+    draw(p, x, y) {
+      p.rect(x, y - 7, 16, 2, C.wood); p.rect(x + 1, y - 5, 1, 6, C.woodDark); p.rect(x + 14, y - 5, 1, 6, C.woodDark);
+      p.rect(x, y - 14, 16, 6, '#7f8c8d'); for (let k = 2; k < 15; k += 3) p.rect(x + k, y - 13, 1, 3, C.black); p.rect(x + 3, y - 9, 3, 2, '#c0392b'); // tool board
+    },
+  },
+  crates: {
+    w: 11, h: 14, spots: [],
+    draw(p, x, y) { for (const [dx, dy] of [[0, 0], [6, 0], [3, 7]]) { p.rect(x + dx, y - 6 - dy, 5, 7, '#b9770e'); p.rect(x + dx, y - 3 - dy, 5, 1, '#7e5109'); p.frame(x + dx, y - 6 - dy, 5, 7, '#7e5109'); } },
+  },
+  // lobbies
+  secdesk: { // the concierge's desk: camera monitors, a brass-trimmed front
+    w: 20, h: 16, spots: [{ act: 'work', role: 'security', dx: 12, dir: -1, anim: 'monitor', behind: true }], screen: { dx: 4, dy: -15, w: 9, h: 5, app: 'cctv', always: true },
+    draw(p, x, y) {
+      p.rect(x + 3, y - 16, 11, 7, C.black); p.rect(x + 8, y - 9, 1, 1, C.metalDark); // monitors
+      p.rect(x + 1, y - 9, 18, 10, '#4a3426'); p.rect(x, y - 10, 20, 1, '#2c3e50'); p.rect(x + 1, y - 9, 18, 1, '#c9a227');
+      for (let k = x + 3; k < x + 18; k += 5) p.rect(k, y - 7, 3, 6, '#5d4032'); p.rect(x + 8, y - 5, 4, 2, '#c9a227'); // panels, a brass name plate
+    },
+  },
+  lobbysofa: {
+    w: 18, h: 9, spots: [{ act: 'rest', dx: 6, hip: 6, dir: 1 }, { act: 'rest', dx: 12, hip: 6, dir: 1 }],
+    draw(p, x, y) { p.rect(x, y - 4, 18, 4, '#3b3b45'); p.rect(x, y - 9, 3, 9, '#2a2a32'); p.rect(x + 15, y - 7, 3, 7, '#2a2a32'); p.rect(x + 3, y - 5, 12, 1, '#55556a'); p.px(x + 1, y, C.metal); p.px(x + 16, y, C.metal); p.rect(x + 4, y - 7, 3, 2, '#c9a227'); },
+  },
+  coffeetable: {
+    w: 9, h: 5, spots: [],
+    draw(p, x, y, it) { p.rect(x, y - 4, 9, 1, C.glass); p.rect(x, y - 3, 9, 1, C.metalDark); p.rect(x + 1, y - 2, 1, 3, C.metalDark); p.rect(x + 7, y - 2, 1, 3, C.metalDark); p.rect(x + 2, y - 5, 3, 1, it.color); p.rect(x + 5, y - 5, 2, 1, C.white); },
+  },
+  bigplant: { // a tall palm in a big pot
+    w: 7, h: 20, spots: [],
+    draw(p, x, y) {
+      p.rect(x + 1, y - 5, 5, 6, '#7f8c8d'); p.rect(x + 1, y - 5, 5, 1, '#95a5a6'); p.rect(x + 3, y - 14, 1, 9, C.woodDark);
+      for (const [dx, dy, len] of [[-3, -16, 4], [1, -19, 3], [3, -15, 4], [-2, -12, 3], [3, -11, 3]]) p.line(x + 3, y - 14, x + 3 + dx, y + dy + 2, C.plant), p.rect(x + 3 + dx - (dx < 0 ? len - 1 : 0), y + dy + 2, len, 1, C.plantDark);
+    },
+  },
+  lockers: { // parcel lockers, with a little screen
+    w: 16, h: 18, spots: [],
+    draw(p, x, y) {
+      p.rect(x, y - 17, 16, 18, '#7f8c8d'); for (let r = 0; r < 4; r++) for (let c = 0; c < 4; c++) { if (r === 1 && c === 1) continue; p.rect(x + 1 + c * 4, y - 16 + r * 4, 3, 3, '#aab7b8'); p.px(x + 3 + c * 4, y - 15 + r * 4, C.metalDark); }
+      p.rect(x + 5, y - 12, 3, 2, '#5dade2'); p.rect(x, y, 16, 1, '#566573');
+    },
+  },
+  bikerack: { // two bikes in a rack
+    w: 18, h: 11, spots: [],
+    draw(p, x, y, it) {
+      p.rect(x, y, 18, 1, C.metalDark); for (const k of [2, 8, 14]) p.rect(x + k, y - 5, 1, 5, C.metal);
+      for (const [b0, col] of [[0, it.color], [9, '#2c3e50']]) {
+        const bx = x + b0;
+        for (const wx of [bx + 2, bx + 7]) { p.frame(wx - 2, y - 4, 5, 5, '#222'); p.px(wx, y - 2, C.metal); }
+        p.line(bx + 2, y - 2, bx + 5, y - 6, col); p.line(bx + 5, y - 6, bx + 7, y - 2, col); p.rect(bx + 4, y - 7, 3, 1, '#222'); p.rect(bx + 7, y - 7, 2, 1, C.metalDark);
+      }
+    },
+  },
+  umbrella: { w: 4, h: 10, spots: [], draw(p, x, y, it) { p.rect(x, y - 5, 4, 6, C.metalDark); p.rect(x + 1, y - 9, 1, 4, it.color); p.rect(x + 2, y - 8, 1, 3, '#2c3e50'); p.px(x + 1, y - 10, it.color); } },
+  mat: { w: 12, h: 1, spots: [], draw(p, x, y) { p.rect(x, y, 12, 1, '#6e4a35'); for (let k = x + 1; k < x + 12; k += 2) p.px(k, y, '#8b6b4a'); } },
+  // hospital
+  hospbed: {
+    w: 22, h: 14, spots: [{ act: 'patient', dx: 13, hip: 7, lie: true, dir: 1, anim: 'sleep' }],
+    draw(p, x, y) {
+      p.rect(x, y - 9, 1, 10, C.metal); p.rect(x + 21, y - 7, 1, 8, C.metal); p.rect(x + 1, y - 6, 20, 2, C.white); p.rect(x + 1, y - 4, 20, 1, C.metalDark);
+      p.rect(x + 2, y - 7, 5, 1, C.ceramic); p.rect(x + 8, y - 7, 13, 1, '#a9cce3'); p.px(x + 3, y, C.black); p.px(x + 19, y, C.black); // wheels
+      p.rect(x - 3, y - 17, 1, 18, C.metalDark); p.rect(x - 4, y - 17, 3, 3, '#d6eaf8'); // a drip stand
+    },
+  },
+  exambed: {
+    w: 18, h: 12, spots: [{ act: 'exam', dx: 6, hip: 6, dir: 1, anim: 'sit' }, { act: 'work', role: 'doctor', dx: 15, dir: -1, anim: 'examine' }],
+    draw(p, x, y) { p.rect(x, y - 6, 13, 2, '#5dade2'); p.rect(x, y - 5, 13, 1, C.white); p.rect(x + 1, y - 4, 1, 5, C.metalDark); p.rect(x + 11, y - 4, 1, 5, C.metalDark); p.rect(x, y - 8, 4, 2, C.white); },
+  },
+  nursedesk: {
+    w: 18, h: 14, spots: [{ act: 'work', role: 'nurse', dx: 7, dir: -1, anim: 'stand', behind: true }], screen: { dx: 3, dy: -13, w: 5, h: 3 },
+    draw(p, x, y) { p.rect(x, y - 9, 12, 10, '#d6eaf8'); p.rect(x - 1, y - 10, 14, 1, '#5dade2'); p.rect(x + 2, y - 14, 7, 5, C.black); p.rect(x + 3, y - 13, 5, 3, C.screen); p.rect(x + 5, y - 6, 3, 3, '#c0392b'); p.rect(x + 6, y - 7, 1, 5, '#c0392b'); p.rect(x + 4, y - 5, 5, 1, '#c0392b'); },
+  },
+  waitchairs: {
+    w: 16, h: 9, spots: [{ act: 'waitroom', dx: 2, hip: 5, dir: 1, anim: 'sit' }, { act: 'waitroom', dx: 7, hip: 5, dir: 1, anim: 'sit' }, { act: 'waitroom', dx: 12, hip: 5, dir: 1, anim: 'sit' }],
+    draw(p, x, y) { for (const k of [0, 5, 10]) { p.rect(x + k, y - 4, 4, 1, '#5dade2'); p.rect(x + k, y - 8, 1, 4, '#5dade2'); } p.rect(x, y - 3, 15, 1, C.metalDark); p.rect(x + 1, y - 2, 1, 3, C.metalDark); p.rect(x + 13, y - 2, 1, 3, C.metalDark); },
+  },
+  medcart: {
+    w: 8, h: 11, spots: [{ act: 'work', role: 'nurse', dx: 10, dir: -1, anim: 'write' }],
+    draw(p, x, y) { p.rect(x, y - 9, 7, 9, C.white); p.frame(x, y - 9, 7, 9, C.metal); p.rect(x + 1, y - 6, 5, 1, C.metal); p.rect(x + 1, y - 3, 5, 1, C.metal); p.px(x + 1, y - 10, '#e74c3c'); p.px(x + 4, y - 10, '#f1c40f'); p.px(x + 1, y, C.black); p.px(x + 5, y, C.black); },
+  },
+});
+FURNITURE.bunkbed.spots[1].floorAbove = true;
+
 // ---------- layer 3: wall details ----------
 // draw(p, x, y, d, r): (x, y) = top-left.
+// A window seen from inside, shaped like it is outside: a painted frame, the sky, its glazing bars
+// (by style: a sash's meeting rail, a picture window's mullions, leaded panes, a steel grid...), a
+// sill, and curtains tied back either side (not on the modern designs).
+function insideWindow(p, x, y, d) {
+  const { w, h } = d, st = d.style || 'classic', f = d.frame || C.white, gx = x + 1, gy = y + 1, gw = w - 2, gh = h - 2;
+  if (st === 'arched') { p.rect(x, y + 2, w, h - 2, f); p.rect(x + 2, y, w - 4, 2, f); p.rect(gx, gy + 2, gw, gh - 2, '#bfe3f5'); p.rect(gx + 2, gy, gw - 4, 2, '#d8effa'); }
+  else { p.rect(x, y, w, h, f); p.rect(gx, gy, gw, gh, '#bfe3f5'); p.rect(gx, gy, gw, Math.min(3, gh), '#d8effa'); }
+  const bar = (bx, by, bw, bh) => p.rect(bx, by, bw, bh, f);
+  switch (st) {
+    case 'sash': bar(gx, y + Math.round(h * 0.45), gw, 1); break;
+    case 'wide': for (const k of [Math.round(w / 3), Math.round((2 * w) / 3)]) bar(x + k, gy, 1, gh); break;
+    case 'tall': bar(gx, y + 5, gw, 1); break;
+    case 'lattice': case 'pub': for (let k = gx + 2; k < gx + gw; k += 3) bar(k, gy, 1, gh); for (let k = gy + 2; k < gy + gh; k += 3) bar(gx, k, gw, 1); break;
+    case 'steel': for (let k = gx + 4; k < gx + gw; k += 5) bar(k, gy, 1, gh); for (let k = gy + 4; k < gy + gh; k += 5) bar(gx, k, gw, 1); break;
+    case 'band': for (let k = gx + 7; k < gx + gw; k += 8) bar(k, gy, 1, gh); break;
+    case 'strip': for (let k = gx + 5; k < gx + gw; k += 7) bar(k, gy, 1, gh); break;
+    case 'box': for (const k of [Math.round(w / 3), Math.round((2 * w) / 3)]) bar(x + k, gy, 1, gh); break;
+    case 'slit': for (let k = gx + 1; k < gx + gw; k += 2) bar(k, gy, 1, gh); break;
+    default: if (w >= 8) bar(x + Math.floor(w / 2), gy, 1, gh); if (h >= 8) bar(gx, y + Math.floor(h / 2), gw, 1); // a cross
+  }
+  if (h >= 6) p.rect(x - 1, y + h, w + 2, 1, C.offwhite); // the sill
+  if (d.curtains && h >= 8) { const ch = Math.min(h, 12); p.rect(x - 2, y - 1, 2, ch, d.color); p.rect(x + w, y - 1, 2, ch, d.color); p.rect(x - 2, y - 1, w + 4, 1, C.woodDark); }
+}
+
 export const DETAILS = {
   window: {
     w: 10, h: 11,
+    // d.w / d.h / d.style: the same window as outside (buildings.js matches them); without, the original square.
     draw(p, x, y, d) {
+      if (d.w) return insideWindow(p, x, y, d);
       p.rect(x, y, 10, 10, C.white); p.rect(x + 1, y + 1, 8, 8, '#bfe3f5'); p.rect(x + 1, y + 1, 8, 3, '#d8effa');
       p.rect(x + 5, y + 1, 1, 8, C.white); p.rect(x + 1, y + 5, 8, 1, C.white); p.rect(x - 1, y + 10, 12, 1, C.offwhite);
       p.rect(x - 1, y - 1, 2, 10, d.color); p.rect(x + 9, y - 1, 2, 10, d.color); p.rect(x - 1, y - 1, 12, 1, C.woodDark);
@@ -447,6 +741,19 @@ export const DETAILS = {
       d.lines.forEach((l, i) => p.text(l, x + 2 + Math.floor(i / rows) * col, y + 2 + (i % rows) * 6, '#f1c40f'));
     },
   },
+  chalkboard: { w: 18, h: 9, draw(p, x, y, d, r) { p.rect(x, y, 18, 9, C.woodDark); p.rect(x + 1, y + 1, 16, 7, '#2d5a3d'); for (let k = 0; k < 3; k++) p.rect(x + 3, y + 2 + k * 2, 4 + (r() * 9 | 0), 1, '#e8f0e8'); } },
+  alphabet: { w: 16, h: 4, draw(p, x, y) { ['#e74c3c', '#f39c12', '#f1c40f', '#27ae60', '#3498db', '#8e44ad'].forEach((c, i) => p.rect(x + i * 3, y + (i % 2), 2, 3, c)); } },
+  bottles: { w: 14, h: 8, draw(p, x, y, d, r) { p.rect(x, y + 7, 14, 1, C.woodDark); for (let i = 0; i < 14; i += 2) { const h = 3 + (r() * 3 | 0); p.rect(x + i, y + 7 - h, 1, h, pick(r, ['#27ae60', '#7e5109', '#c0392b', '#d4ac0d', '#5dade2'])); } } },
+  dartboard: { w: 6, h: 6, draw(p, x, y) { p.rect(x + 1, y, 4, 6, '#1e1e22'); p.rect(x, y + 1, 6, 4, '#1e1e22'); p.rect(x + 1, y + 1, 4, 4, '#c0392b'); p.rect(x + 2, y + 2, 2, 2, '#27ae60'); p.px(x + 3, y + 3, '#f1c40f'); } },
+  menu: { w: 12, h: 9, draw(p, x, y, d, r) { p.rect(x, y, 12, 9, '#1e1e22'); for (let k = 0; k < 3; k++) { p.rect(x + 2, y + 2 + k * 2, 5 + (r() * 3 | 0), 1, C.white); p.rect(x + 9, y + 2 + k * 2, 2, 1, '#f1c40f'); } } },
+  safety: { w: 9, h: 7, draw(p, x, y) { p.rect(x, y, 9, 7, '#f1c40f'); p.frame(x, y, 9, 7, C.black); p.rect(x + 4, y + 1, 1, 3, C.black); p.px(x + 4, y + 5, C.black); } },
+  badge: { w: 7, h: 7, draw(p, x, y) { p.rect(x + 3, y, 1, 7, '#d4ac0d'); p.rect(x, y + 2, 7, 2, '#d4ac0d'); p.rect(x + 1, y + 1, 5, 5, '#d4ac0d'); p.px(x + 3, y + 3, '#2c3e50'); } },
+  wanted: { w: 6, h: 8, draw(p, x, y) { p.rect(x, y, 6, 8, '#f5e6c8'); p.rect(x + 2, y + 1, 2, 2, C.black); p.rect(x + 1, y + 3, 4, 2, C.black); p.rect(x + 1, y + 6, 4, 1, '#c0392b'); } },
+  lobbyart: { w: 16, h: 9, draw(p, x, y, d, r) { p.rect(x, y, 16, 9, '#c9a227'); p.rect(x + 1, y + 1, 14, 7, '#f5f2ec'); p.rect(x + 2, y + 2, 5, 5, pick(r, ['#c0392b', '#2e86c1', '#16a085'])); p.rect(x + 8, y + 4, 6, 3, pick(r, ['#f1c40f', '#8e44ad', '#2c3e50'])); p.rect(x + 6, y + 2, 4, 2, '#1e1e22'); } },
+  noticeboard: { w: 14, h: 9, draw(p, x, y, d, r) { p.rect(x, y, 14, 9, C.woodDark); p.rect(x + 1, y + 1, 12, 7, '#c8a878'); for (let k = 0; k < 4; k++) { const nx = x + 2 + k * 3, ny = y + 2 + (k % 2) * 2; p.rect(nx, ny, 2, 3, pick(r, [C.white, '#f7dc6f', '#aed6f1', '#f5b7b1'])); p.px(nx, ny, '#c0392b'); } } },
+  redcross: { w: 9, h: 9, draw(p, x, y) { p.rect(x, y, 9, 9, C.white); p.rect(x + 3, y + 1, 3, 7, '#c0392b'); p.rect(x + 1, y + 3, 7, 3, '#c0392b'); } },
+  heartmon: { w: 8, h: 6, draw(p, x, y) { p.rect(x, y, 8, 6, C.black); p.rect(x + 1, y + 1, 6, 4, '#0b3d2e'); p.line(x + 1, y + 3, x + 3, y + 3, '#2ecc71'); p.line(x + 3, y + 3, x + 4, y + 1, '#2ecc71'); p.line(x + 4, y + 1, x + 5, y + 4, '#2ecc71'); p.px(x + 6, y + 3, '#2ecc71'); } },
+  helmets: { w: 12, h: 4, draw(p, x, y) { p.rect(x, y + 3, 12, 1, C.woodDark); for (const k of [0, 4, 8]) { p.rect(x + k, y + 1, 4, 2, '#c0392b'); p.rect(x + k + 1, y, 2, 1, '#c0392b'); } } },
   sale: { w: 15, h: 7, draw(p, x, y) { p.rect(x, y, 15, 7, '#e74c3c'); p.text('SALE', x, y + 1, C.white); } },
   open: { w: 15, h: 7, draw(p, x, y) { p.rect(x, y, 15, 7, '#27ae60'); p.text('OPEN', x, y + 1, C.white); } },
 };
@@ -458,13 +765,22 @@ const WOOD = '#9a6b43', TILE = '#b8bec4', CARPET = '#7c8595';
 const rep = (n, kind, from) => Array.from({ length: n }, (_, i) => [kind, from + i]);
 
 export const ROOMS = {
-  bedroom: { wall: '#e9e0f0', floor: WOOD, items: (v) => [['wardrobe', 4], [v === 'single' ? 'bed' : 'bed2', 1], ['nightstand', 2], ['dresser', 5], ['plant', 6]], decor: ['picture', 'clock'] },
+  bedroom: { wall: '#e9e0f0', floor: WOOD, items: (v) => (v === 'kids' // a child's room: their own bed, a desk for homework, a toy box
+    ? [['bed', 1], ['kiddesk', 2], ['toybox', 3], ['plant', 5]]
+    : [['wardrobe', 4], [v === 'single' ? 'bed' : 'bed2', 1], ['nightstand', 2], ['dresser', 5], ['plant', 6]]), decor: ['picture', 'clock'] },
   kitchen: { wall: '#f4ecd6', floor: TILE, items: () => [['fridge', 1], ['counter', 3], ['stove', 1], ['table', 2], ['plant', 7]], decor: ['clock', 'shelf'] },
   living: { wall: '#e2edd9', floor: WOOD, items: () => [['lamp', 5], ['sofa', 1], ['armchair', 4], ['tv', 2], ['bookshelf', 3], ['plant', 6]], decor: ['picture', 'shelf'] },
   washroom: { wall: '#d6edf2', floor: TILE, tiles: true, items: (v, w) => (v === 'office'
     ? [['toilet', 1], ['sink', 1], ['toilet', 3], ['sink', 4]]
     : [['toilet', 1], ['sink', 1], [w >= 40 ? 'bathtub' : 'shower', 2]]), decor: ['towel'] },
-  lobby: { wall: '#efe5d5', floor: TILE, items: () => [['parcelshelf', 1], ['plant', 4], ['bench', 2], ['plant', 3]], decor: ['mailboxes', 'picture'] },
+  // Lobbies. A condo tower's has a concierge and security desk (cameras on its screens), parcel
+  // lockers, a sofa and coffee table on a rug, tall palms, art and a chandelier; an apartment block's
+  // has mailboxes, a noticeboard, a bike rack, a bench, a parcel shelf and an umbrella stand. Both
+  // have a doormat. (No variant: the lobby as it used to be, kept only to lay out older towns.)
+  lobby: { wall: '#efe5d5', floor: TILE, decorFor: { condo: ['lobbyart', 'mailboxes'], apt: ['noticeboard', 'mailboxes'] },
+    items: (v) => (v === 'condo' ? [['mat', 8], ['bigplant', 5], ['lobbysofa', 3], ['coffeetable', 4], ['secdesk', 1], ['lockers', 2], ['bigplant', 6]]
+      : v === 'apt' ? [['mat', 6], ['bikerack', 3], ['bench', 4], ['umbrella', 7], ['parcelshelf', 1], ['plant', 5], ['bigplant', 8]]
+      : [['parcelshelf', 1], ['plant', 4], ['bench', 2], ['plant', 3]]), decor: ['mailboxes', 'picture'] },
   study: { wall: '#e8e4d8', floor: WOOD, items: (v, w, r) => [['plant', 4], [r() < 0.6 ? 'pcdesk' : 'laptopdesk', 1], ['bookshelf', 2], ['lamp', 5]], decor: ['poster', 'shelf'] },
   greenhouse: { wall: '#dcefd6', floor: TILE, tiles: true, items: () => [['planter', 1], ['seedlings', 2], ['planter', 3], ['plant', 4], ['plant', 5]], decor: ['shelf'] },
   gym: { wall: '#e3e6ea', floor: CARPET, items: () => [['treadmill', 1], ['weightbench', 2], ['plant', 4]], decor: ['mirror', 'poster'] },
@@ -477,10 +793,28 @@ export const ROOMS = {
   meeting: { wall: '#e3e7f0', floor: CARPET, items: () => [['plant', 3], ['conference', 1], ['plant', 4]], decor: ['whiteboard', 'screen'] },
   reception: { wall: '#ece3d3', floor: TILE, items: () => [['reception', 1], ['couch', 2], ['plant', 3]], decor: ['logo', 'clock'] },
   store: {
-    wall: '#f5f2ea', floor: TILE, noWindow: true,
-    items: () => [['baskets', 12], ['checkout', 1], ['shelves', 2], ['produce', 5], ['shelves', 4], ['shelves', 6], ['shelves', 8], ['shelves', 10], ['fridgecase', 3], ['fridgecase', 9]],
+    wall: '#f5f2ea', floor: TILE, noWindow: true, venue: 'store', open: [7, 22],
+    items: () => [['baskets', 12], ['checkout', 1], ['shelves', 2], ['produce', 5], ['pharmacy', 7], ['shelves', 4], ['shelves', 6], ['shelves', 8], ['shelves', 10], ['fridgecase', 3], ['fridgecase', 9]],
     decor: ['sale', 'open'],
   },
+  // Chapter 2: places to eat, drink, learn, work and keep the town safe.
+  // venue: what it sells; open: opening hours (hours past 24 are after midnight).
+  diner: { wall: '#f6e3c8', floor: WOOD, venue: 'food', open: [11, 23], items: () => [['till', 1], ['dinetable', 2], ['longtable', 3], ['dinetable', 4], ['plant', 6], ['dinetable', 5], ['pass', 1]], decor: ['menu', 'picture'] },
+  restkitchen: { wall: '#e8ecef', floor: TILE, tiles: true, venue: 'food', kitchen: true, open: [10, 23.5], items: () => [['prep', 1], ['grill', 1], ['fridge', 2], ['counter', 3]], decor: ['shelf', 'clock'] },
+  cafe: { wall: '#f3e6d8', floor: WOOD, venue: 'food', open: [7, 20], items: () => [['dinetable', 2], ['plant', 5], ['dinetable', 3], ['cafecounter', 1], ['pass', 4]], decor: ['menu', 'clock'] },
+  pub: { wall: '#6e4a35', floor: '#5a3420', venue: 'bar', open: [16, 26], items: () => [['jukebox', 5], ['pubtable', 2], ['pubtable', 3], ['barcounter', 1], ['pubtable', 4]], decor: ['dartboard', 'bottles'] },
+  classroom: { wall: '#f0ead2', floor: WOOD, items: () => [['teacherdesk', 1], ...rep(6, 'schooldesk', 2), ['bookshelf', 9], ['plant', 10]], decor: ['chalkboard', 'alphabet'] },
+  playground: { wall: null, floor: '#6aa84f', outdoor: true, noWindow: true, items: () => [['swings', 1], ['slide', 2], ['sandbox', 3]], decor: [] },
+  firebay: { wall: '#dcd6cb', floor: '#8a8a8a', noWindow: true, items: () => [['gearrack', 2], ['plant', 9]], decor: ['helmets', 'safety'] },
+  bunks: { wall: '#e3e6ea', floor: CARPET, items: () => [['bunkbed', 1], ['bunkbed', 2]], decor: ['clock', 'picture'] },
+  firelounge: { wall: '#efe0d0', floor: TILE, items: () => [['crewtable', 1], ['crewcouch', 2], ['tv', 3], ['fridge', 4], ['coffee', 5]], decor: ['helmets', 'clock'] },
+  policefront: { wall: '#dfe6ee', floor: TILE, items: () => [['bench', 2], ['frontdesk', 1], ['plant', 3]], decor: ['badge', 'wanted'] },
+  cells: { wall: '#c9ccd1', floor: '#8a8c92', noWindow: true, items: () => [['cell', 1], ['cell', 2]], decor: [] },
+  precinct: { wall: '#e5e9ef', floor: CARPET, items: () => [['filing', 4], ['copdesk', 1], ['copdesk', 2], ['copdesk', 3], ['coffee', 5]], decor: ['wanted', 'clock'] },
+  factoryfloor: { wall: '#c8cdc4', floor: '#7d7f7a', items: () => [['crates', 5], ['press', 1], ['conveyor', 2], ['press', 3], ['workbench', 4], ['crates', 6]], decor: ['safety', 'clock'] },
+  er: { wall: '#eef5f9', floor: TILE, items: () => [['waitchairs', 2], ['plant', 4], ['nursedesk', 1], ['exambed', 1], ['waitchairs', 3]], decor: ['redcross', 'clock'] },
+  ward: { wall: '#eaf2ea', floor: TILE, items: () => [['hospbed', 1], ['medcart', 3], ['hospbed', 2], ['plant', 5]], decor: ['heartmon', 'clock'] },
+  fitness: { wall: '#e3e6ea', floor: CARPET, items: () => [['treadmill', 1], ['bike', 2], ['weightbench', 3], ['dumbbells', 4], ['bike', 5], ['treadmill', 6], ['plant', 7]], decor: ['mirror', 'poster'] },
 };
 FURNITURE.bed2 = { ...FURNITURE.bed, spots: [...FURNITURE.bed.spots, { act: 'sleep', dx: 15, hip: 7, lie: true, dir: 1 }] };
 
@@ -506,7 +840,7 @@ export function furnish(room, r) {
 
 // Wall details: a window in the middle, decorations either side, a mirror over each sink.
 export function decorate(room, items, r) {
-  const rule = ROOMS[room.kind], out = [];
+  const rule0 = ROOMS[room.kind], rule = { ...rule0, decor: rule0.decorFor?.[room.variant] || rule0.decor }, out = [];
   const add = (kind, x, top) => out.push({ kind, x: Math.round(x), top, color: pick(r, FABRIC) });
   const mid = room.x + room.w / 2;
   let left = room.x + 2, right = room.x + room.w - 2, winL = mid, winR = mid;

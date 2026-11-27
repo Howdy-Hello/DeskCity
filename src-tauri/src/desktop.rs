@@ -119,6 +119,124 @@ pub fn windows(_: f64, _: f64, _: f64) -> Vec<Win> {
     vec![]
 }
 
+/// Which desktop (Space) is showing: (index among ordinary desktops, how many there are,
+/// whether it's a full-screen app's space). Uses the same private CoreGraphics calls as
+/// window managers like yabai; if anything is off it falls back to a single desktop.
+#[cfg(target_os = "macos")]
+pub fn spaces() -> (usize, usize, bool) {
+    let (ids, index, full) = layout();
+    (index.unwrap_or(0), ids.len().max(1), full)
+}
+
+/// The ordinary desktops on the display that's showing, in Mission Control order, which of them is
+/// showing (None on a full-screen app's space), and whether a full-screen app's space is showing.
+#[cfg(target_os = "macos")]
+pub fn layout() -> (Vec<u64>, Option<usize>, bool) {
+    use core_foundation::array::{CFArray, CFArrayRef};
+    use core_foundation::base::{CFType, TCFType};
+    use core_foundation::dictionary::{CFDictionary, CFDictionaryRef};
+    use core_foundation::number::CFNumber;
+    use core_foundation::string::CFString;
+    #[link(name = "CoreGraphics", kind = "framework")]
+    extern "C" {
+        fn CGSMainConnectionID() -> i32;
+        fn CGSGetActiveSpace(cid: i32) -> u64;
+        fn CGSCopyManagedDisplaySpaces(cid: i32) -> CFArrayRef;
+    }
+    type Dict = CFDictionary<CFString, CFType>;
+    let num = |d: &Dict, k: &'static str| d.find(CFString::from_static_string(k)).and_then(|v| v.downcast::<CFNumber>()).and_then(|n| n.to_i64());
+    unsafe {
+        let cid = CGSMainConnectionID();
+        let active = CGSGetActiveSpace(cid) as i64;
+        let raw = CGSCopyManagedDisplaySpaces(cid);
+        if raw.is_null() {
+            return (vec![], None, false);
+        }
+        let displays: CFArray<CFType> = CFArray::wrap_under_create_rule(raw);
+        for d in displays.iter() {
+            let d: Dict = CFDictionary::wrap_under_get_rule(d.as_CFTypeRef() as CFDictionaryRef);
+            let Some(list) = d.find(CFString::from_static_string("Spaces")) else { continue };
+            let list: CFArray<CFType> = CFArray::wrap_under_get_rule(list.as_CFTypeRef() as CFArrayRef);
+            let (mut ids, mut index, mut full, mut found) = (vec![], None, false, false);
+            for s in list.iter() {
+                let s: Dict = CFDictionary::wrap_under_get_rule(s.as_CFTypeRef() as CFDictionaryRef);
+                let id = num(&s, "ManagedSpaceID").unwrap_or(-1);
+                let kind = num(&s, "type").unwrap_or(0); // 0 = ordinary desktop, 4 = full-screen app
+                if id == active { found = true; if kind == 0 { index = Some(ids.len()) } else { full = true } }
+                if kind == 0 { ids.push(id as u64) }
+            }
+            if found {
+                return (ids, index, full);
+            }
+        }
+        (vec![], None, false)
+    }
+}
+
+/// Moves one of our own windows onto one desktop (and off every other).
+#[cfg(target_os = "macos")]
+pub fn move_window_to_space(window_number: isize, space: u64) {
+    use core_foundation::array::{CFArray, CFArrayRef};
+    use core_foundation::base::TCFType;
+    use core_foundation::number::CFNumber;
+    #[link(name = "CoreGraphics", kind = "framework")]
+    extern "C" {
+        fn CGSMainConnectionID() -> i32;
+        fn CGSAddWindowsToSpaces(cid: i32, windows: CFArrayRef, spaces: CFArrayRef);
+        fn CGSRemoveWindowsFromSpaces(cid: i32, windows: CFArrayRef, spaces: CFArrayRef);
+    }
+    let others: Vec<CFNumber> = window_spaces(window_number).into_iter().filter(|&s| s != space as i64).map(CFNumber::from).collect();
+    unsafe {
+        let cid = CGSMainConnectionID();
+        let wins = CFArray::from_CFTypes(&[CFNumber::from(window_number as i64)]);
+        CGSAddWindowsToSpaces(cid, wins.as_concrete_TypeRef(), CFArray::from_CFTypes(&[CFNumber::from(space as i64)]).as_concrete_TypeRef());
+        if !others.is_empty() {
+            CGSRemoveWindowsFromSpaces(cid, wins.as_concrete_TypeRef(), CFArray::from_CFTypes(&others).as_concrete_TypeRef());
+        }
+    }
+}
+
+/// Which desktops one of our windows is on.
+#[cfg(target_os = "macos")]
+pub fn window_spaces(window_number: isize) -> Vec<i64> {
+    use core_foundation::array::{CFArray, CFArrayRef};
+    use core_foundation::base::TCFType;
+    use core_foundation::number::CFNumber;
+    #[link(name = "CoreGraphics", kind = "framework")]
+    extern "C" {
+        fn CGSMainConnectionID() -> i32;
+        fn CGSCopySpacesForWindows(cid: i32, mask: i32, windows: CFArrayRef) -> CFArrayRef;
+    }
+    unsafe {
+        let list = CFArray::from_CFTypes(&[CFNumber::from(window_number as i64)]);
+        let raw = CGSCopySpacesForWindows(CGSMainConnectionID(), 7, list.as_concrete_TypeRef());
+        if raw.is_null() { return vec![]; }
+        let out: CFArray<CFNumber> = CFArray::wrap_under_create_rule(raw);
+        out.iter().filter_map(|n| n.to_i64()).collect()
+    }
+}
+
+/// The id of the Space showing right now: a very cheap call, used to notice a switch instantly.
+#[cfg(target_os = "macos")]
+pub fn active_space() -> u64 {
+    #[link(name = "CoreGraphics", kind = "framework")]
+    extern "C" {
+        fn CGSMainConnectionID() -> i32;
+        fn CGSGetActiveSpace(cid: i32) -> u64;
+    }
+    unsafe { CGSGetActiveSpace(CGSMainConnectionID()) }
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn active_space() -> u64 {
+    0
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn spaces() -> (usize, usize, bool) {
+    (0, 1, false) // Windows virtual desktops: not yet; one neighbourhood
+}
+
 #[cfg(test)]
 mod tests {
     #[test]
@@ -130,3 +248,15 @@ mod tests {
         println!("{} windows: {:?}", wins.len(), wins.iter().map(|w| (w.x, w.y, w.w, w.h)).collect::<Vec<_>>());
     }
 }
+
+#[cfg(test)]
+mod space_tests {
+    #[test]
+    fn reads_current_space() {
+        let (index, count, full) = super::spaces();
+        assert!(index < count);
+        println!("desktop {} of {}, fullscreen: {}", index + 1, count, full);
+    }
+}
+
+
